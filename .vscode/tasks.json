@@ -4,7 +4,7 @@
     {
       "label": "opencode: desktop dev",
       "type": "shell",
-      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; $env:Path = 'C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\WinGet\\Links;' + $env:Path; bun dev:desktop",
+      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; if ($env:BUN_LINKS_PATH -and (Test-Path -LiteralPath $env:BUN_LINKS_PATH)) { $env:Path = $env:BUN_LINKS_PATH + ';' + $env:Path }; bun dev:desktop",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {
@@ -18,7 +18,7 @@
     {
       "label": "opencode: desktop build",
       "type": "shell",
-      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; $env:Path = 'C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\WinGet\\Links;' + $env:Path; bun run build",
+      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; if ($env:BUN_LINKS_PATH -and (Test-Path -LiteralPath $env:BUN_LINKS_PATH)) { $env:Path = $env:BUN_LINKS_PATH + ';' + $env:Path }; bun run build",
       "options": {
         "cwd": "${workspaceFolder}\\packages\\desktop",
         "shell": {
@@ -32,7 +32,7 @@
     {
       "label": "opencode: desktop package win",
       "type": "shell",
-      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; $env:Path = 'C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\WinGet\\Links;' + $env:Path; bun run package:win",
+      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; if ($env:BUN_LINKS_PATH -and (Test-Path -LiteralPath $env:BUN_LINKS_PATH)) { $env:Path = $env:BUN_LINKS_PATH + ';' + $env:Path }; bun run package:win",
       "options": {
         "cwd": "${workspaceFolder}\\packages\\desktop",
         "shell": {

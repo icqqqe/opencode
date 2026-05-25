@@ -34,7 +34,7 @@ git remote -v
 ```powershell
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
 git status --short --branch
-git add 'AGENTS.md' '.gitignore' 'CODEX_GIT_P4_WORKFLOW.md' 'CODEX_GITHUB_PUBLISH_GUIDE.md' 'CODEX_OPENCODE_WINDOWS_CLIENT_DEV_GUIDE.md' 'CODEX_WORKFLOW_LOG.md' 'HANDOFF_2026-05-25_OPENCODE_WINDOWS_CLIENT_INIT.md'
+git add 'AGENTS.md' '.gitignore' '.vscode/tasks.json' 'AI_HELP_MD/README.md' 'AI_HELP_MD/PROJECT_ROOT_CONFIG.md' 'AI_HELP_MD/CODEX_GIT_P4_WORKFLOW.md' 'AI_HELP_MD/CODEX_GITHUB_PUBLISH_GUIDE.md' 'AI_HELP_MD/CODEX_OPENCODE_WINDOWS_CLIENT_DEV_GUIDE.md' 'AI_HELP_MD/CODEX_WORKFLOW_LOG.md' 'AI_HELP_MD/HANDOFF_2026-05-25_OPENCODE_WINDOWS_CLIENT_INIT.md'
 git commit -m 'docs: initialize windows client development workflow'
 ```
 

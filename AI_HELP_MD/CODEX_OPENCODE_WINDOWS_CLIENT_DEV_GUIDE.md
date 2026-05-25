@@ -9,15 +9,15 @@
 ## 当前源码来源
 
 - 官方仓库：https://github.com/anomalyco/opencode
-- 本地目录：`E:\mygithub\opencode`
+- 本地目录：`<repo-root>`
 - 官方默认分支：`dev`
 - 当前二次开发分支：`work/windows-client-ui`
 
 ## 个人项目与公司项目边界
 
-- `E:\mygithub\opencode` 是个人 GitHub 二开项目。
-- `E:\workspace\game` 是公司工程，不属于本项目。
-- 本项目的维护 MD 和 Handoff MD 直接放在 `E:\mygithub\opencode` 根目录。
+- `<repo-root>` 是个人 GitHub 二开项目。
+- `<company-workspace>` 是公司工程，不属于本项目。
+- 本项目的维护 MD 和 Handoff MD 统一放在 `AI_HELP_MD/` 目录。
 
 ## 桌面端结构
 
@@ -101,6 +101,7 @@ git remote add 'origin' 'https://github.com/<你的账号>/opencode-windows-clie
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
 git push -u 'origin' 'work/windows-client-ui'
 ```
+
 ## 本机初始化记录
 
 - 已安装 `bun@1.3.14`。
@@ -110,27 +111,32 @@ git push -u 'origin' 'work/windows-client-ui'
 - 已执行 `packages/desktop` 下的 `bun run build`，构建通过。
 - 已启动桌面端开发模式，renderer dev server 为 `http://localhost:5173`，sidecar 为 `http://127.0.0.1:3202`。
 - 本地运行日志写入 `.codex_dev_logs/`，该目录只用于本机排障，不提交到 GitHub。
+
 ## 手动开发运行流程
 
 ### 进入仓库
 
+在仓库根目录打开 PowerShell 后，把当前目录记录到本窗口的 `OPENCODE_DEV_ROOT`：
+
 ```powershell
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
-cd 'E:\mygithub\opencode'
+$env:OPENCODE_DEV_ROOT = (Resolve-Path -LiteralPath '.').Path
+cd $env:OPENCODE_DEV_ROOT
 ```
 
-如果新 PowerShell 里提示找不到 `bun`，先临时补 PATH：
+如果新 PowerShell 里提示找不到 `bun`，先按 `PROJECT_ROOT_CONFIG.md` 配置 `BUN_LINKS_PATH`，或在当前窗口临时追加：
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
-$env:Path = 'C:\Users\Administrator\AppData\Local\Microsoft\WinGet\Links;' + $env:Path
-cd 'E:\mygithub\opencode'
+if ($env:BUN_LINKS_PATH -and (Test-Path -LiteralPath $env:BUN_LINKS_PATH)) { $env:Path = $env:BUN_LINKS_PATH + ';' + $env:Path }
+cd $env:OPENCODE_DEV_ROOT
 ```
 
 ### 开发模式启动客户端
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
+cd $env:OPENCODE_DEV_ROOT
 bun dev:desktop
 ```
 
@@ -144,7 +150,7 @@ bun dev:desktop
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
-cd 'E:\mygithub\opencode\packages\desktop'
+cd (Join-Path $env:OPENCODE_DEV_ROOT 'packages\desktop')
 bun run build
 ```
 
@@ -152,7 +158,7 @@ bun run build
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
-cd 'E:\mygithub\opencode\packages\desktop'
+cd (Join-Path $env:OPENCODE_DEV_ROOT 'packages\desktop')
 bun run package:win
 ```
 
@@ -174,6 +180,7 @@ bun run package:win
 6. 提交前在 `packages/desktop` 执行 `bun run build`。
 7. 查看改动：`git diff`。
 8. 提交：`git add <文件>`，然后 `git commit -m 'feat(desktop): ...'`。
+
 ## VSCode 开发流程
 
 ### 打开源码
@@ -182,11 +189,11 @@ bun run package:win
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
-cd 'E:\mygithub\opencode'
+cd $env:OPENCODE_DEV_ROOT
 code .
 ```
 
-如果 `code` 命令不可用，可以手动打开 VSCode，然后选择 `File -> Open Folder...`，打开 `E:\mygithub\opencode`。
+如果 `code` 命令不可用，可以手动打开 VSCode，然后选择 `File -> Open Folder...`，打开仓库根目录。
 
 ### 推荐扩展
 

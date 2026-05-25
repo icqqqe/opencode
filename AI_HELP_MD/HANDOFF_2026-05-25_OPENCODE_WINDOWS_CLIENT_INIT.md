@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 本地仓库目录：`E:\mygithub\opencode`
+- 本地仓库目录：`<repo-root>`
 - 官方源码已拉取：`https://github.com/anomalyco/opencode.git`
 - 当前分支：`work/windows-client-ui`
 - 官方远端：`upstream`
@@ -18,7 +18,7 @@
 - 确认桌面端为 Electron 项目。
 - 确认根脚本 `dev:desktop`，桌面端脚本 `dev`、`build`、`package:win`。
 - 创建二次开发工作分支 `work/windows-client-ui`。
-- 建立根目录维护文档和 Handoff 文档。
+- 建立`AI_HELP_MD/` 维护文档和 Handoff 文档。
 
 ## 重要约定
 
@@ -26,7 +26,7 @@
 - `upstream` 只用于同步官方源码。
 - `origin` 预留给用户自己的 GitHub 仓库。
 - 后续二次开发改动应提交到 `work/windows-client-ui`。
-- 指导类 MD 和 Handoff MD 直接放在仓库根目录。
+- 指导类 MD 和 Handoff MD 统一放在 `AI_HELP_MD/` 目录。
 
 ## 当前阻塞
 
@@ -36,7 +36,7 @@
 ## 下一步
 
 1. 用户创建自己的 GitHub 空仓库后，配置 `origin`。
-2. 提交并推送源码和根目录维护文档。
+2. 提交并推送源码和`AI_HELP_MD/` 维护文档。
 3. 后续 UI 二次开发从 `packages/desktop/src/renderer` 开始。
 
 ## 依赖与启动验证结果
@@ -52,3 +52,9 @@
 - 已完成一次桌面端开发模式启动验证，日志显示 `server ready`。
 - 当前没有残留 `bun/electron/electron-vite` 进程。
 - 日志尾部显示 `sidecar exited { code: 0 }`，未见崩溃栈。
+## 文档迁移补充
+
+- 根目录保留 `AGENTS.md`。
+- 个人二开指导文档、工作流记录和 Handoff 统一存放在 `AI_HELP_MD/`。
+- 文档关系索引见 `AI_HELP_MD/README.md`。
+- 根目录可移植配置见 `AI_HELP_MD/PROJECT_ROOT_CONFIG.md`。

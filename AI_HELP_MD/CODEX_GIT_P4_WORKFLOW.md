@@ -7,7 +7,7 @@
 | P4 习惯 | Git 对应 | 本项目用法 |
 | --- | --- | --- |
 | Depot / 主线 | Remote branch | `upstream/dev` 是官方主线 |
-| Workspace | Working tree | `E:\mygithub\opencode` |
+| Workspace | Working tree | `<repo-root>` |
 | Stream | Branch | `work/windows-client-ui` 是你的开发分支 |
 | Sync latest | `git fetch` + `git merge` 或 `git pull` | 从 `upstream/dev` 拉官方更新 |
 | Open for edit | 直接修改工作区文件 | 修改前先确认文件可写 |

@@ -4,12 +4,12 @@
 
 用户目标：
 
-- 在 `E:\mygithub\opencode` 二次开发 OpenCode Windows 桌面客户端界面。
+- 在 `<repo-root>` 二次开发 OpenCode Windows 桌面客户端界面。
 - 从 `anomalyco/opencode` 拉取源码。
 - 后续把源码、维护文档、Handoff 文档都推送到用户自己的 GitHub 仓库。
 - 用户平时更熟悉 P4，因此 Git 操作需要用 P4 类比解释。
 - 日常交流中的重要要求和工作流，需要随时沉淀到指导类 MD。
-- 维护文档和 Handoff 文档直接放在仓库根目录，不放到 `ai_custom/CODEX`。
+- 维护文档和 Handoff 文档统一放在 `AI_HELP_MD/` 目录，不放到 `ai_custom/CODEX`。
 
 已确认：
 
@@ -36,7 +36,7 @@
 已完成：
 
 - 使用 winget 安装 `bun@1.3.14`。
-- 当前 shell PATH 未自动刷新，因此后续命令临时追加 `C:\Users\Administrator\AppData\Local\Microsoft\WinGet\Links` 到 PATH。
+- 当前 shell PATH 未自动刷新，因此后续命令临时追加 `<BUN_LINKS_PATH>` 到 PATH。
 - 执行 `bun install` 成功，安装 2174 个包。
 - `bun run build` 在 `packages/desktop` 下执行成功。
 - 首次运行 `bun run dev` 失败，报错 `Electron uninstall`。
@@ -67,3 +67,14 @@
 - `opencode: desktop package win`
 
 已补充到 `CODEX_OPENCODE_WINDOWS_CLIENT_DEV_GUIDE.md` 的 `VSCode 开发流程` 小节。
+## 2026-05-25 AI_HELP_MD 目录迁移
+
+用户要求把当前会话中创建的个人开发 MD、指导 MD、Handoff MD 统一迁入 `AI_HELP_MD/`，根目录只保留 `AGENTS.md`。
+
+已完成：
+
+- 将 `CODEX_*` 指导文档和 `HANDOFF_*` 交接文档迁入 `AI_HELP_MD/`。
+- 新增 `AI_HELP_MD/README.md` 记录各 MD 的关联关系和引用路径。
+- 新增 `AI_HELP_MD/PROJECT_ROOT_CONFIG.md` 记录换电脑/换目录时的根目录配置方式。
+- 将文档内项目路径尽量改为 `<repo-root>`、`OPENCODE_DEV_ROOT`、`${workspaceFolder}` 或相对路径。
+- 将 `.vscode/tasks.json` 改为通过可选 `BUN_LINKS_PATH` 查找 Bun，避免写死当前机器用户目录。

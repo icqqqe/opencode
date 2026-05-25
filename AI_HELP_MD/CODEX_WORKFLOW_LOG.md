@@ -103,3 +103,12 @@ P4 类比：`origin` 是用户自己的远端 depot，`upstream` 是官方 depot
 - 加入 Bun PATH 后再次 push，pre-push hook 运行 `bun typecheck`，但官方仓库中 `packages/enterprise/src/custom-elements.d.ts` 是 Git symlink；当前 Windows checkout 的 `core.symlinks=false` 导致该 symlink 被检出为文本文件，typecheck 失败。
 - 本次推送使用 `HUSKY=0` 跳过 pre-push hook 完成上传。
 - 已知验证：`packages/desktop` 下 `bun run build` 曾通过；本次跳过的是根仓库 pre-push typecheck。
+## 2026-05-25 下一线程开发交接
+
+用户计划新开线程继续开发，要求检查并记录需要交接的内容，然后推送到 GitHub。
+
+已新增：
+
+- `AI_HELP_MD/HANDOFF_2026-05-25_NEXT_THREAD_DEVELOPMENT.md`
+
+该 Handoff 记录下一线程的阅读顺序、当前分支与远端、文档位置约定、开发入口、启动方式、已验证内容、已知 Windows symlink/typecheck 问题、Git/P4 类比和建议动作。

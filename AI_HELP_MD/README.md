@@ -21,6 +21,7 @@
 | `CODEX_GITHUB_PUBLISH_GUIDE.md` | 推送到个人 GitHub 仓库的步骤 | `CODEX_GIT_P4_WORKFLOW.md` |
 | `CODEX_WORKFLOW_LOG.md` | 当前会话和后续会话的长期工作记录 | Handoff、开发指南 |
 | `HANDOFF_2026-05-25_OPENCODE_WINDOWS_CLIENT_INIT.md` | 初始化阶段交接记录 | 工作流日志、开发指南 |
+| `HANDOFF_2026-05-25_NEXT_THREAD_DEVELOPMENT.md` | 下一线程开发交接入口 | `AGENTS.md`、开发指南、根目录配置 |
 
 ## 后续维护规则
 

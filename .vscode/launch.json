@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "OpenCode Prod: Main Entry",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}\\packages\\desktop",
+      "runtimeExecutable": "${workspaceFolder}\\packages\\desktop\\node_modules\\.bin\\electron.exe",
+      "args": ["."],
+      "env": {
+        "OPENCODE_CHANNEL": "prod"
+      },
+      "preLaunchTask": "opencode: desktop prepare prod debug",
+      "sourceMaps": true,
+      "outFiles": ["${workspaceFolder}/packages/desktop/out/main/**/*.js"],
+      "skipFiles": ["<node_internals>/**"],
+      "console": "integratedTerminal",
+      "outputCapture": "std",
+      "autoAttachChildProcesses": true,
+      "smartStep": true,
+      "resolveSourceMapLocations": ["${workspaceFolder}/packages/desktop/**", "!**/node_modules/**"]
+    }
+  ]
+}

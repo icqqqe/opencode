@@ -2,9 +2,22 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "opencode: install dependencies",
+      "type": "shell",
+      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; if ($env:BUN_LINKS_PATH -and (Test-Path -LiteralPath $env:BUN_LINKS_PATH)) { $env:Path = $env:BUN_LINKS_PATH + ';' + $env:Path }; $winGetLinks = Join-Path $env:LOCALAPPDATA 'Microsoft\\WinGet\\Links'; if (Test-Path -LiteralPath $winGetLinks) { $env:Path = $winGetLinks + ';' + $env:Path }; if (Get-Command 'nvm' -ErrorAction SilentlyContinue) { nvm use 24.11.1 }; bun install",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "powershell.exe",
+          "args": ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "opencode: desktop dev",
       "type": "shell",
-      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; if ($env:BUN_LINKS_PATH -and (Test-Path -LiteralPath $env:BUN_LINKS_PATH)) { $env:Path = $env:BUN_LINKS_PATH + ';' + $env:Path }; bun dev:desktop",
+      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; if ($env:BUN_LINKS_PATH -and (Test-Path -LiteralPath $env:BUN_LINKS_PATH)) { $env:Path = $env:BUN_LINKS_PATH + ';' + $env:Path }; $winGetLinks = Join-Path $env:LOCALAPPDATA 'Microsoft\\WinGet\\Links'; if (Test-Path -LiteralPath $winGetLinks) { $env:Path = $winGetLinks + ';' + $env:Path }; if (Get-Command 'nvm' -ErrorAction SilentlyContinue) { nvm use 24.11.1 }; bun dev:desktop",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {
@@ -18,7 +31,7 @@
     {
       "label": "opencode: desktop build",
       "type": "shell",
-      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; if ($env:BUN_LINKS_PATH -and (Test-Path -LiteralPath $env:BUN_LINKS_PATH)) { $env:Path = $env:BUN_LINKS_PATH + ';' + $env:Path }; bun run build",
+      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; if ($env:BUN_LINKS_PATH -and (Test-Path -LiteralPath $env:BUN_LINKS_PATH)) { $env:Path = $env:BUN_LINKS_PATH + ';' + $env:Path }; $winGetLinks = Join-Path $env:LOCALAPPDATA 'Microsoft\\WinGet\\Links'; if (Test-Path -LiteralPath $winGetLinks) { $env:Path = $winGetLinks + ';' + $env:Path }; if (Get-Command 'nvm' -ErrorAction SilentlyContinue) { nvm use 24.11.1 }; bun run build",
       "options": {
         "cwd": "${workspaceFolder}\\packages\\desktop",
         "shell": {
@@ -30,9 +43,29 @@
       "problemMatcher": []
     },
     {
+      "label": "opencode: desktop build prod sourcemap",
+      "type": "shell",
+      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; if ($env:BUN_LINKS_PATH -and (Test-Path -LiteralPath $env:BUN_LINKS_PATH)) { $env:Path = $env:BUN_LINKS_PATH + ';' + $env:Path }; $winGetLinks = Join-Path $env:LOCALAPPDATA 'Microsoft\\WinGet\\Links'; if (Test-Path -LiteralPath $winGetLinks) { $env:Path = $winGetLinks + ';' + $env:Path }; if (Get-Command 'nvm' -ErrorAction SilentlyContinue) { nvm use 24.11.1 }; $env:OPENCODE_CHANNEL = 'prod'; bun run build --sourcemap",
+      "options": {
+        "cwd": "${workspaceFolder}\\packages\\desktop",
+        "shell": {
+          "executable": "powershell.exe",
+          "args": ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+        }
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "opencode: desktop prepare prod debug",
+      "dependsOrder": "sequence",
+      "dependsOn": ["opencode: install dependencies", "opencode: desktop build prod sourcemap"],
+      "problemMatcher": []
+    },
+    {
       "label": "opencode: desktop package win",
       "type": "shell",
-      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; if ($env:BUN_LINKS_PATH -and (Test-Path -LiteralPath $env:BUN_LINKS_PATH)) { $env:Path = $env:BUN_LINKS_PATH + ';' + $env:Path }; bun run package:win",
+      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; if ($env:BUN_LINKS_PATH -and (Test-Path -LiteralPath $env:BUN_LINKS_PATH)) { $env:Path = $env:BUN_LINKS_PATH + ';' + $env:Path }; $winGetLinks = Join-Path $env:LOCALAPPDATA 'Microsoft\\WinGet\\Links'; if (Test-Path -LiteralPath $winGetLinks) { $env:Path = $winGetLinks + ';' + $env:Path }; if (Get-Command 'nvm' -ErrorAction SilentlyContinue) { nvm use 24.11.1 }; $env:OPENCODE_CHANNEL = 'prod'; bun run package:win",
       "options": {
         "cwd": "${workspaceFolder}\\packages\\desktop",
         "shell": {

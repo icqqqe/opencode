@@ -1,0 +1,4 @@
+interface:
+  display_name: OpenCode Windows Desktop Dev
+  short_description: OpenCode Windows 桌面端二开工作流
+  default_prompt: 使用 OpenCode Windows 桌面端二开工作流辅助我阅读、调试、同步和提交这个仓库。

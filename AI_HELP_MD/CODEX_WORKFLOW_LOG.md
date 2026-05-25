@@ -121,3 +121,15 @@ P4 类比：`origin` 是用户自己的远端 depot，`upstream` 是官方 depot
 
 - 保留 conventional commit 的类型和可选 scope 前缀，例如 `docs:`、`chore(desktop):`。
 - commit summary 和 commit body 说明使用中文，方便用户直接阅读提交历史。
+
+## 2026-05-25 OpenCode 二开 Skill 双份维护规则
+
+已创建 `opencode-windows-desktop-dev` skill，用于后续辅助 OpenCode Windows 桌面端二开、阅读、调试、同步和提交。
+
+维护规则：
+
+- 当前机器可直接使用的安装副本：`C:\Users\Administrator\.codex\skills\opencode-windows-desktop-dev`。
+- 随 GitHub 同步的仓库副本：`AI_HELP_MD/skills/opencode-windows-desktop-dev`。
+- 后续 `AI_HELP_MD/skills/` 下创建的所有 repo 同步 skill，都采用 `AI_HELP_MD/skills/<skill-name>` 与 `%USERPROFILE%\.codex\skills\<skill-name>` 双份维护。
+- 后续创建或修改这些 skill 时，两边的 `SKILL.md` 和 `agents/openai.yaml` 必须同步更新。
+- 新机器从 GitHub 拉取后，如需启用仓库内 skill，将对应 `AI_HELP_MD/skills/<skill-name>` 目录复制到 `%USERPROFILE%\.codex\skills\<skill-name>`。

@@ -22,10 +22,13 @@
 | `CODEX_WORKFLOW_LOG.md` | 当前会话和后续会话的长期工作记录 | Handoff、开发指南 |
 | `HANDOFF_2026-05-25_OPENCODE_WINDOWS_CLIENT_INIT.md` | 初始化阶段交接记录 | 工作流日志、开发指南 |
 | `HANDOFF_2026-05-25_NEXT_THREAD_DEVELOPMENT.md` | 下一线程开发交接入口 | `AGENTS.md`、开发指南、根目录配置 |
+| `skills/` | 随 GitHub 同步的 Codex skill 仓库副本目录 | `%USERPROFILE%\.codex\skills` 安装副本 |
 
 ## 后续维护规则
 
 - 新增指导类文档放入 `AI_HELP_MD/`。
+- `AI_HELP_MD/skills/` 下的所有 skill 都采用双份维护：仓库副本放在 `AI_HELP_MD/skills/<skill-name>`，当前机器安装副本放在 `%USERPROFILE%\.codex\skills\<skill-name>`；创建或修改时必须同步更新两边。
+- 新机器从 GitHub 拉取后，如需启用仓库内 skill，将对应 `AI_HELP_MD/skills/<skill-name>` 目录复制到 `%USERPROFILE%\.codex\skills\<skill-name>`。
 - 新增 Handoff 也放入 `AI_HELP_MD/`，文件名建议使用 `HANDOFF_YYYY-MM-DD_主题.md`。
 - 文档间引用优先使用相对路径。
 - 不在文档中记录 GitHub 密码、Token、SSH 私钥等凭据。

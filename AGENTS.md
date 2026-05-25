@@ -133,3 +133,14 @@ const table = sqliteTable("session", {
 ## Type Checking
 
 - Always run `bun typecheck` from package directories (e.g., `packages/opencode`), never `tsc` directly.
+
+## Personal Windows Desktop Fork Notes
+
+- This checkout under `E:\mygithub\opencode` is the user's personal GitHub development project for secondary development of the OpenCode Windows desktop client.
+- Do not confuse this repository with the user's company project under `E:\workspace\game`.
+- Maintenance docs and handoff docs for this personal project should live directly in `E:\mygithub\opencode`, not under `ai_custom/CODEX`.
+- All PowerShell commands in this workspace must start with UTF8 initialization:
+  `[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;`
+- The user is more familiar with P4 than Git. Explain Git operations with P4 analogies when guiding branch, sync, merge, submit, and push workflows.
+- Do not ask for or record GitHub passwords, tokens, or SSH private keys in chat or repo docs.
+- For upstream sync, treat `upstream` as the official OpenCode depot/mainline and `origin` as the user's personal GitHub repository.

@@ -10,6 +10,8 @@ Use conventional commit-style messages and PR titles: `type(scope): summary`.
 
 Valid types are `feat`, `fix`, `docs`, `chore`, `refactor`, and `test`. Scopes are optional; use the affected package or area when helpful, e.g. `core`, `opencode`, `tui`, `app`, `desktop`, `sdk`, or `plugin`.
 
+本个人 Windows 桌面端二开分支中，所有 commit summary 和 commit body 说明都使用中文；保留 conventional commit 的 type 和可选 scope 前缀，例如 `docs: 记录中文提交说明规则` 或 `chore(desktop): 增加 VSCode 正式版调试配置`。
+
 Examples: `fix(tui): simplify thinking toggle styling`, `docs: update contributing guide`, `chore(sdk): regenerate types`.
 
 ## Style Guide

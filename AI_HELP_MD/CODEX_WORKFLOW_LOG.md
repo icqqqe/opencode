@@ -112,3 +112,12 @@ P4 类比：`origin` 是用户自己的远端 depot，`upstream` 是官方 depot
 - `AI_HELP_MD/HANDOFF_2026-05-25_NEXT_THREAD_DEVELOPMENT.md`
 
 该 Handoff 记录下一线程的阅读顺序、当前分支与远端、文档位置约定、开发入口、启动方式、已验证内容、已知 Windows symlink/typecheck 问题、Git/P4 类比和建议动作。
+
+## 2026-05-25 提交说明语言规则
+
+用户要求后续提交说明全部使用中文。
+
+已记录到 `AGENTS.md`：
+
+- 保留 conventional commit 的类型和可选 scope 前缀，例如 `docs:`、`chore(desktop):`。
+- commit summary 和 commit body 说明使用中文，方便用户直接阅读提交历史。

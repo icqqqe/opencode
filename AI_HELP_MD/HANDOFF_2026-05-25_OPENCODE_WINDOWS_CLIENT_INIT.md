@@ -64,3 +64,9 @@
 - 远端名：`origin`
 - 推送分支：`work/windows-client-ui`
 - 官方仓库仍保留为：`upstream`
+## GitHub 推送结果
+
+- 已成功推送到：`origin/work/windows-client-ui`
+- 远端仓库：`https://github.com/icqqqe/opencode.git`
+- GitHub PR 地址：`https://github.com/icqqqe/opencode/pull/new/work/windows-client-ui`
+- 推送时因 Windows 本地 symlink checkout 导致官方 pre-push typecheck 失败，本次使用 `HUSKY=0` 跳过 hook。

@@ -51,3 +51,8 @@
 
 - 启动验证日志显示 `server ready`。
 - 当前检查时 `bun/electron/electron-vite` 进程已退出，日志尾部为 `sidecar exited { code: 0 }`，未见崩溃栈。
+## 2026-05-25 手动开发流程补充
+
+用户要求补充：如何手动编译运行 OpenCode Windows 客户端、如何查看源码、如何修改源码后重新编译运行。
+
+已补充到 `CODEX_OPENCODE_WINDOWS_CLIENT_DEV_GUIDE.md` 的 `手动开发运行流程` 小节。

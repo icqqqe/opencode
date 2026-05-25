@@ -110,3 +110,67 @@ git push -u 'origin' 'work/windows-client-ui'
 - 已执行 `packages/desktop` 下的 `bun run build`，构建通过。
 - 已启动桌面端开发模式，renderer dev server 为 `http://localhost:5173`，sidecar 为 `http://127.0.0.1:3202`。
 - 本地运行日志写入 `.codex_dev_logs/`，该目录只用于本机排障，不提交到 GitHub。
+## 手动开发运行流程
+
+### 进入仓库
+
+```powershell
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
+cd 'E:\mygithub\opencode'
+```
+
+如果新 PowerShell 里提示找不到 `bun`，先临时补 PATH：
+
+```powershell
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
+$env:Path = 'C:\Users\Administrator\AppData\Local\Microsoft\WinGet\Links;' + $env:Path
+cd 'E:\mygithub\opencode'
+```
+
+### 开发模式启动客户端
+
+```powershell
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
+bun dev:desktop
+```
+
+开发模式会启动 Electron 客户端，并监听源码变化。改 UI 源码后通常会自动热更新；如果主进程或 preload 改动没有自动生效，停止后重新运行 `bun dev:desktop`。
+
+### 停止客户端
+
+在启动客户端的 PowerShell 窗口按 `Ctrl+C`，或者关闭 Electron 客户端窗口。
+
+### 手动编译检查
+
+```powershell
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
+cd 'E:\mygithub\opencode\packages\desktop'
+bun run build
+```
+
+### 打 Windows 安装包
+
+```powershell
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
+cd 'E:\mygithub\opencode\packages\desktop'
+bun run package:win
+```
+
+### 看源码入口
+
+- UI 渲染层：`packages/desktop/src/renderer`
+- 主进程窗口、菜单、系统能力：`packages/desktop/src/main`
+- 主进程暴露给 UI 的桥接 API：`packages/desktop/src/preload`
+- 共享 Web UI 组件：`packages/app/src`
+- 共享 UI 基础组件和主题：`packages/ui/src`
+
+### 改源码后的推荐节奏
+
+1. 开发前看状态：`git status --short --branch`。
+2. 启动开发模式：`bun dev:desktop`。
+3. 修改源码。
+4. 在客户端窗口里观察热更新效果。
+5. 必要时按 `Ctrl+C` 停止，再重新运行 `bun dev:desktop`。
+6. 提交前在 `packages/desktop` 执行 `bun run build`。
+7. 查看改动：`git diff`。
+8. 提交：`git add <文件>`，然后 `git commit -m 'feat(desktop): ...'`。

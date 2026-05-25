@@ -174,3 +174,36 @@ bun run package:win
 6. 提交前在 `packages/desktop` 执行 `bun run build`。
 7. 查看改动：`git diff`。
 8. 提交：`git add <文件>`，然后 `git commit -m 'feat(desktop): ...'`。
+## VSCode 开发流程
+
+### 打开源码
+
+推荐用 VSCode 直接打开仓库根目录：
+
+```powershell
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null;
+cd 'E:\mygithub\opencode'
+code .
+```
+
+如果 `code` 命令不可用，可以手动打开 VSCode，然后选择 `File -> Open Folder...`，打开 `E:\mygithub\opencode`。
+
+### 推荐扩展
+
+- Bun for Visual Studio Code：用于 Bun 运行时和脚本支持。
+- ESLint / Prettier 可按个人习惯安装，但本项目当前主要按仓库脚本验证。
+
+### 使用 VSCode Tasks
+
+本仓库已新增 `.vscode/tasks.json`，可在 VSCode 中执行：
+
+1. `Terminal -> Run Task...`
+2. 选择 `opencode: desktop dev` 启动 Electron 客户端开发模式。
+3. 选择 `opencode: desktop build` 编译检查桌面端。
+4. 选择 `opencode: desktop package win` 打 Windows 安装包。
+
+### 改源码后如何看效果
+
+- 如果只改 UI，多数情况下 `opencode: desktop dev` 运行中会自动热更新。
+- 如果改了 `packages/desktop/src/main` 或 `packages/desktop/src/preload`，建议停止当前 Task 后重新运行 `opencode: desktop dev`。
+- 提交前至少执行一次 `opencode: desktop build`。

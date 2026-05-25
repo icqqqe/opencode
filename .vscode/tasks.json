@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "opencode: desktop dev",
+      "type": "shell",
+      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; $env:Path = 'C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\WinGet\\Links;' + $env:Path; bun dev:desktop",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "powershell.exe",
+          "args": ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "opencode: desktop build",
+      "type": "shell",
+      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; $env:Path = 'C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\WinGet\\Links;' + $env:Path; bun run build",
+      "options": {
+        "cwd": "${workspaceFolder}\\packages\\desktop",
+        "shell": {
+          "executable": "powershell.exe",
+          "args": ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+        }
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "opencode: desktop package win",
+      "type": "shell",
+      "command": "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; $env:Path = 'C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\WinGet\\Links;' + $env:Path; bun run package:win",
+      "options": {
+        "cwd": "${workspaceFolder}\\packages\\desktop",
+        "shell": {
+          "executable": "powershell.exe",
+          "args": ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+        }
+      },
+      "problemMatcher": []
+    }
+  ]
+}

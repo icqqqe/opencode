@@ -56,3 +56,14 @@
 用户要求补充：如何手动编译运行 OpenCode Windows 客户端、如何查看源码、如何修改源码后重新编译运行。
 
 已补充到 `CODEX_OPENCODE_WINDOWS_CLIENT_DEV_GUIDE.md` 的 `手动开发运行流程` 小节。
+## 2026-05-25 VSCode 开发流程补充
+
+用户询问是否可以用 VSCode 看源码、编译和运行。
+
+已新增 `.vscode/tasks.json`，提供以下 VSCode Task：
+
+- `opencode: desktop dev`
+- `opencode: desktop build`
+- `opencode: desktop package win`
+
+已补充到 `CODEX_OPENCODE_WINDOWS_CLIENT_DEV_GUIDE.md` 的 `VSCode 开发流程` 小节。

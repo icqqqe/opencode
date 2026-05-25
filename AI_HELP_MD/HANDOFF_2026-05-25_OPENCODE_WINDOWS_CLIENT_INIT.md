@@ -58,3 +58,9 @@
 - 个人二开指导文档、工作流记录和 Handoff 统一存放在 `AI_HELP_MD/`。
 - 文档关系索引见 `AI_HELP_MD/README.md`。
 - 根目录可移植配置见 `AI_HELP_MD/PROJECT_ROOT_CONFIG.md`。
+## GitHub 推送目标
+
+- 用户个人仓库：`https://github.com/icqqqe/opencode.git`
+- 远端名：`origin`
+- 推送分支：`work/windows-client-ui`
+- 官方仓库仍保留为：`upstream`

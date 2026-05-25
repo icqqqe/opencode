@@ -78,3 +78,14 @@
 - 新增 `AI_HELP_MD/PROJECT_ROOT_CONFIG.md` 记录换电脑/换目录时的根目录配置方式。
 - 将文档内项目路径尽量改为 `<repo-root>`、`OPENCODE_DEV_ROOT`、`${workspaceFolder}` 或相对路径。
 - 将 `.vscode/tasks.json` 改为通过可选 `BUN_LINKS_PATH` 查找 Bun，避免写死当前机器用户目录。
+## 2026-05-25 配置个人 GitHub 远端
+
+用户提供个人 GitHub 仓库：`https://github.com/icqqqe/opencode.git`。
+
+执行计划：
+
+- 将该仓库配置为 `origin`。
+- 保持官方仓库 `https://github.com/anomalyco/opencode.git` 为 `upstream`。
+- 将本地二开分支 `work/windows-client-ui` 推送到 `origin/work/windows-client-ui`。
+
+P4 类比：`origin` 是用户自己的远端 depot，`upstream` 是官方 depot；本次只 submit 到用户自己的远端，不提交到官方 depot。

@@ -143,7 +143,61 @@
       color: var(--syntax-type);
     }
 
+    [data-highlight="skill"] {
+      color: var(--icon-info-active);
+    }
     max-width: 100%;
+  }
+
+  [data-slot="user-message-skills"] {
+    margin-top: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    max-width: 100%;
+  }
+
+  [data-slot="user-message-skill"] {
+    appearance: none;
+    min-width: 0;
+    max-width: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--border-weak-base);
+    border-radius: 6px;
+    background: var(--surface-interactive-weak);
+    color: var(--text-base);
+    padding: 3px 7px;
+    cursor: pointer;
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-normal);
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease;
+
+    &:hover {
+      border-color: var(--border-interactive-hover);
+      background: var(--surface-interactive-base);
+    }
+  }
+
+  [data-slot="user-message-skill-name"] {
+    flex: none;
+    color: var(--icon-info-active);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+  }
+
+  [data-slot="user-message-skill-description"] {
+    min-width: 0;
+    max-width: 28ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-weak);
   }
 
   [data-slot="user-message-copy-wrapper"] {
@@ -1272,4 +1326,16 @@
     flex-shrink: 0;
     color: var(--icon-weak);
   }
+}
+[data-slot="message-part-title-filename"][data-clickable],
+[data-slot="apply-patch-file-name-container"][data-clickable],
+[data-slot="tool-loaded-file-name"][data-clickable] {
+  cursor: pointer;
+}
+
+[data-slot="message-part-title-filename"][data-clickable]:hover,
+[data-slot="tool-loaded-file-name"][data-clickable]:hover,
+[data-slot="apply-patch-file-name-container"][data-clickable]:hover [data-slot="apply-patch-filename"] {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

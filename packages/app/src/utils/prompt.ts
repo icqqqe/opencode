@@ -1,5 +1,5 @@
 import type { AgentPart as MessageAgentPart, FilePart, Part, TextPart } from "@opencode-ai/sdk/v2"
-import type { AgentPart, FileAttachmentPart, ImageAttachmentPart, Prompt } from "@/context/prompt"
+import type { AgentPart, FileAttachmentPart, ImageAttachmentPart, Prompt, SkillPart } from "@/context/prompt"
 
 type Inline =
   | {
@@ -22,6 +22,19 @@ type Inline =
       value: string
       name: string
     }
+  | {
+      type: "skill"
+      start: number
+      end: number
+      value: string
+      name: string
+      description?: string
+      body: string
+    }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
 
 function selectionFromFileUrl(url: string): Extract<Inline, { type: "file" }>["selection"] {
   const queryIndex = url.indexOf("?")
@@ -35,6 +48,29 @@ function selectionFromFileUrl(url: string): Extract<Inline, { type: "file" }>["s
     endLine,
     startChar: 0,
     endChar: 0,
+  }
+}
+
+function skillFromMetadata(metadata: unknown): Extract<Inline, { type: "skill" }> | undefined {
+  if (!isRecord(metadata)) return
+  const skill = metadata.opencodeSkill
+  if (!isRecord(skill)) return
+  const source = skill.source
+  if (!isRecord(source)) return
+  if (typeof skill.name !== "string") return
+  if (typeof skill.content !== "string") return
+  if (typeof source.value !== "string") return
+  if (typeof source.start !== "number") return
+  if (typeof source.end !== "number") return
+  if (skill.description !== undefined && typeof skill.description !== "string") return
+  return {
+    type: "skill",
+    name: skill.name,
+    description: skill.description,
+    body: skill.content,
+    value: source.value,
+    start: source.start,
+    end: source.end,
   }
 }
 
@@ -112,6 +148,11 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
       }
     }
 
+    if (part.type === "text" && part.synthetic) {
+      const skill = skillFromMetadata(part.metadata)
+      if (skill) inline.push(skill)
+    }
+
     if (part.type === "agent") {
       const agentPart = part as MessageAgentPart
       const source = agentPart.source
@@ -173,6 +214,21 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
     position += content.length
   }
 
+  const pushSkill = (item: Extract<Inline, { type: "skill" }>) => {
+    const content = item.value
+    const skill: SkillPart = {
+      type: "skill",
+      name: item.name,
+      description: item.description,
+      body: item.body,
+      content,
+      start: position,
+      end: position + content.length,
+    }
+    result.push(skill)
+    position += content.length
+  }
+
   for (const item of inline) {
     if (item.start < 0 || item.end < item.start) continue
 
@@ -188,6 +244,7 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
 
     if (item.type === "file") pushFile(item)
     if (item.type === "agent") pushAgent(item)
+    if (item.type === "skill") pushSkill(item)
 
     cursor = end
   }

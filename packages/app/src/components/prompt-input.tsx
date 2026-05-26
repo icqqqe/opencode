@@ -24,12 +24,14 @@ import {
   ImageAttachmentPart,
   AgentPart,
   FileAttachmentPart,
+  SkillPart,
 } from "@/context/prompt"
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { useComments } from "@/context/comments"
 import { Button } from "@opencode-ai/ui/button"
+import { Dialog } from "@opencode-ai/ui/dialog"
 import { DockShellForm, DockTray } from "@opencode-ai/ui/dock-surface"
 import { Icon } from "@opencode-ai/ui/icon"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
@@ -59,7 +61,7 @@ import {
   promptLength,
 } from "./prompt-input/history"
 import { createPromptSubmit, type FollowupDraft } from "./prompt-input/submit"
-import { PromptPopover, type AtOption, type SlashCommand } from "./prompt-input/slash-popover"
+import { PromptPopover, type AtOption, type SkillCommand, type SlashCommand } from "./prompt-input/slash-popover"
 import { PromptContextItems } from "./prompt-input/context-items"
 import { PromptImageAttachments } from "./prompt-input/image-attachments"
 import { PromptDragOverlay } from "./prompt-input/drag-overlay"
@@ -137,6 +139,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   let fileInputRef: HTMLInputElement | undefined
   let scrollRef!: HTMLDivElement
   let slashPopoverRef!: HTMLDivElement
+  let skillPopoverRef!: HTMLDivElement
 
   const mirror = { input: false }
   const inset = 56
@@ -261,7 +264,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   )
 
   const [store, setStore] = createStore<{
-    popover: "at" | "slash" | null
+    popover: "at" | "slash" | "skill" | null
     historyIndex: number
     savedPrompt: PromptHistoryEntry | null
     placeholder: number
@@ -638,18 +641,59 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         type: "builtin" as const,
       }))
 
-    const custom = sync.data.command.map((cmd) => ({
-      id: `custom.${cmd.name}`,
-      trigger: cmd.name,
-      title: cmd.name,
-      description: cmd.description,
-      type: "custom" as const,
-      source: cmd.source,
-    }))
+    const custom = sync.data.command
+      .filter((cmd) => cmd.source !== "skill")
+      .map((cmd) => ({
+        id: `custom.${cmd.name}`,
+        trigger: cmd.name,
+        title: cmd.name,
+        description: cmd.description,
+        type: "custom" as const,
+        source: cmd.source,
+      }))
 
     return [...custom, ...builtin]
   })
 
+  const skillCommands = createMemo<SkillCommand[]>(() =>
+    sync.data.command
+      .filter((cmd) => cmd.source === "skill")
+      .map((cmd) => ({
+        id: `skill.${cmd.name}`,
+        trigger: cmd.name,
+        title: cmd.name,
+        description: cmd.description,
+        template: cmd.template,
+      })),
+  )
+
+  const showSkillDialog = (skill: { name: string; description?: string; body: string }) => {
+    dialog.show(() => (
+      <Dialog title={`$${skill.name}`} size="large" class="w-full max-w-[760px] mx-auto">
+        <div class="flex min-h-0 flex-1 flex-col gap-3 px-6 pb-5">
+          <Show when={skill.description}>
+            <p class="shrink-0 text-14-regular text-text-base">{skill.description}</p>
+          </Show>
+          <pre class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border border-border-weak-base bg-surface-base p-3 text-12-regular text-text-strong">
+            <code>{skill.body}</code>
+          </pre>
+        </div>
+      </Dialog>
+    ))
+  }
+
+  const handleSkillSelect = (skill: SkillCommand | undefined) => {
+    if (!skill) return
+    addPart({
+      type: "skill",
+      name: skill.trigger,
+      description: skill.description,
+      body: skill.template,
+      content: `$${skill.trigger}`,
+      start: 0,
+      end: 0,
+    })
+  }
   const handleSlashSelect = (cmd: SlashCommand | undefined) => {
     if (!cmd) return
     closePopover()
@@ -681,15 +725,38 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     onSelect: handleSlashSelect,
   })
 
-  const createPill = (part: FileAttachmentPart | AgentPart) => {
+  const {
+    flat: skillFlat,
+    active: skillActive,
+    setActive: setSkillActive,
+    onInput: skillOnInput,
+    onKeyDown: skillOnKeyDown,
+  } = useFilteredList<SkillCommand>({
+    items: skillCommands,
+    key: (x) => x?.id,
+    filterKeys: ["trigger", "title"],
+    onSelect: handleSkillSelect,
+  })
+
+  const createPill = (part: FileAttachmentPart | AgentPart | SkillPart) => {
     const pill = document.createElement("span")
     pill.textContent = part.content
     pill.setAttribute("data-type", part.type)
     if (part.type === "file") pill.setAttribute("data-path", part.path)
     if (part.type === "agent") pill.setAttribute("data-name", part.name)
+    if (part.type === "skill") {
+      pill.setAttribute("data-name", part.name)
+      pill.setAttribute("data-description", part.description ?? "")
+      pill.setAttribute("data-body", part.body)
+      pill.addEventListener("click", (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        showSkillDialog({ name: part.name, description: part.description, body: part.body })
+      })
+    }
     pill.setAttribute("contenteditable", "false")
     pill.style.userSelect = "text"
-    pill.style.cursor = "default"
+    pill.style.cursor = part.type === "skill" ? "pointer" : "default"
     return pill
   }
 
@@ -709,6 +776,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       const el = node as HTMLElement
       if (el.dataset.type === "file") return true
       if (el.dataset.type === "agent") return true
+      if (el.dataset.type === "skill") return true
       return el.tagName === "BR"
     })
 
@@ -719,7 +787,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         editorRef.appendChild(createTextFragment(part.content))
         continue
       }
-      if (part.type === "file" || part.type === "agent") {
+      if (part.type === "file" || part.type === "agent" || part.type === "skill") {
         editorRef.appendChild(createPill(part))
       }
     }
@@ -740,6 +808,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       element?.scrollIntoView({ block: "nearest", behavior: "smooth" })
     })
   })
+
+  createEffect(() => {
+    const activeId = skillActive()
+    if (!activeId || !skillPopoverRef) return
+
+    requestAnimationFrame(() => {
+      const element = skillPopoverRef.querySelector(`[data-skill-id="${activeId}"]`)
+      element?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    })
+  })
   const selectPopoverActive = () => {
     if (store.popover === "at") {
       const items = atFlat()
@@ -756,6 +834,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       const active = slashActive()
       const item = items.find((entry) => entry.id === active) ?? items[0]
       handleSlashSelect(item)
+    }
+
+    if (store.popover === "skill") {
+      const items = skillFlat()
+      if (items.length === 0) return
+      const active = skillActive()
+      const item = items.find((entry) => entry.id === active) ?? items[0]
+      handleSkillSelect(item)
     }
   }
 
@@ -823,6 +909,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       position += content.length
     }
 
+    const pushSkill = (skill: HTMLElement) => {
+      const content = skill.textContent ?? ""
+      parts.push({
+        type: "skill",
+        name: skill.dataset.name!,
+        description: skill.dataset.description || undefined,
+        body: skill.dataset.body ?? "",
+        content,
+        start: position,
+        end: position + content.length,
+      })
+      position += content.length
+    }
+
     const visit = (node: Node) => {
       if (node.nodeType === Node.TEXT_NODE) {
         buffer += node.textContent ?? ""
@@ -839,6 +939,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       if (el.dataset.type === "agent") {
         flushText()
         pushAgent(el)
+        return
+      }
+      if (el.dataset.type === "skill") {
+        flushText()
+        pushSkill(el)
         return
       }
       if (el.tagName === "BR") {
@@ -893,12 +998,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const shellMode = store.mode === "shell"
 
     if (!shellMode) {
-      const atMatch = rawText.substring(0, cursorPosition).match(/@(\S*)$/)
+      const textBeforeCursor = rawText.substring(0, cursorPosition)
+      const atMatch = textBeforeCursor.match(/@(\S*)$/)
+      const skillMatch = textBeforeCursor.match(/\$(\S*)$/)
       const slashMatch = rawText.match(/^\/(\S*)$/)
 
       if (atMatch) {
         atOnInput(atMatch[1])
         setStore("popover", "at")
+      } else if (skillMatch) {
+        skillOnInput(skillMatch[1])
+        setStore("popover", "skill")
       } else if (slashMatch) {
         slashOnInput(slashMatch[1])
         setStore("popover", "slash")
@@ -908,7 +1018,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     } else {
       closePopover()
     }
-
     resetHistoryNavigation()
 
     mirror.input = true
@@ -932,19 +1041,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const range = selection.getRangeAt(0)
     if (!editorRef.contains(range.startContainer)) return false
 
-    if (part.type === "file" || part.type === "agent") {
+    if (part.type === "file" || part.type === "agent" || part.type === "skill") {
       const cursorPosition = getCursorPosition(editorRef)
       const rawText = prompt
         .current()
         .map((p) => ("content" in p ? p.content : ""))
         .join("")
       const textBeforeCursor = rawText.substring(0, cursorPosition)
-      const atMatch = textBeforeCursor.match(/@(\S*)$/)
+      const triggerMatch =
+        part.type === "skill" ? textBeforeCursor.match(/\$(\S*)$/) : textBeforeCursor.match(/@(\S*)$/)
       const pill = createPill(part)
       const gap = document.createTextNode(" ")
 
-      if (atMatch) {
-        const start = atMatch.index ?? cursorPosition - atMatch[0].length
+      if (triggerMatch) {
+        const start = triggerMatch.index ?? cursorPosition - triggerMatch[0].length
         setRangeEdge(editorRef, range, "start", start)
         setRangeEdge(editorRef, range, "end", cursorPosition)
       }
@@ -957,7 +1067,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       selection.removeAllRanges()
       selection.addRange(range)
     }
-
     if (part.type === "text") {
       const fragment = createTextFragment(part.content)
       const last = fragment.lastChild
@@ -1223,6 +1332,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         }
         if (store.popover === "slash") {
           slashOnKeyDown(event)
+          event.preventDefault()
+          return
+        }
+        if (store.popover === "skill") {
+          skillOnKeyDown(event)
+          event.preventDefault()
+          return
         }
         event.preventDefault()
         return
@@ -1300,7 +1416,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const designPlaceholder = () => {
     if (store.mode === "shell") return placeholder()
-    return "Ask anything, / for commands, @ for context..."
+    return "Ask anything, / for commands, $ for skills, @ for context..."
   }
 
   const modelControl = () => (
@@ -1395,6 +1511,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       <PromptPopover
         popover={store.popover}
         setSlashPopoverRef={(el) => (slashPopoverRef = el)}
+        setSkillPopoverRef={(el) => (skillPopoverRef = el)}
         atFlat={atFlat()}
         atActive={atActive() ?? undefined}
         atKey={atKey}
@@ -1404,6 +1521,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         slashActive={slashActive() ?? undefined}
         setSlashActive={setSlashActive}
         onSlashSelect={handleSlashSelect}
+        skillFlat={skillFlat()}
+        skillActive={skillActive() ?? undefined}
+        setSkillActive={setSkillActive}
+        onSkillSelect={handleSkillSelect}
         commandKeybind={command.keybind}
         t={(key) => language.t(key as Parameters<typeof language.t>[0])}
       />
@@ -1482,6 +1603,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     "min-h-[52px] w-full px-4 pt-4 pb-2 focus:outline-none whitespace-pre-wrap leading-5 text-[13px] font-[440] text-v2-text-text-faint [font-family:Inter,var(--font-family-sans)]": true,
                     "[&_[data-type=file]]:text-syntax-property": true,
                     "[&_[data-type=agent]]:text-syntax-type": true,
+                    "[&_[data-type=skill]]:text-icon-info-active": true,
                     "font-mono!": store.mode === "shell",
                   }}
                 />
@@ -1638,6 +1760,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     "w-full pl-3 pr-2 pt-2 text-14-regular text-text-strong focus:outline-none whitespace-pre-wrap": true,
                     "[&_[data-type=file]]:text-syntax-property": true,
                     "[&_[data-type=agent]]:text-syntax-type": true,
+                    "[&_[data-type=skill]]:text-icon-info-active": true,
                     "font-mono!": store.mode === "shell",
                   }}
                   style={{ "padding-bottom": space }}

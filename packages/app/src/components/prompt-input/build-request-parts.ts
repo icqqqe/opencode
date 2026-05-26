@@ -2,7 +2,7 @@ import { getFilename } from "@opencode-ai/core/util/path"
 import { type AgentPartInput, type FilePartInput, type Part, type TextPartInput } from "@opencode-ai/sdk/v2/client"
 import type { FileSelection } from "@/context/file"
 import { encodeFilePath } from "@/context/file/path"
-import type { AgentPart, FileAttachmentPart, ImageAttachmentPart, Prompt } from "@/context/prompt"
+import type { AgentPart, FileAttachmentPart, ImageAttachmentPart, Prompt, SkillPart } from "@/context/prompt"
 import { Identifier } from "@/utils/id"
 import { createCommentMetadata, formatCommentNote } from "@/utils/comment-note"
 
@@ -51,6 +51,17 @@ const parseCommentMentions = (comment: string) => {
 
 const isFileAttachment = (part: Prompt[number]): part is FileAttachmentPart => part.type === "file"
 const isAgentAttachment = (part: Prompt[number]): part is AgentPart => part.type === "agent"
+const isSkillAttachment = (part: Prompt[number]): part is SkillPart => part.type === "skill"
+
+function skillPromptText(skill: SkillPart) {
+  return [
+    `<skill_content name="${skill.name}">`,
+    `# Skill: ${skill.name}`,
+    "",
+    skill.body.trim(),
+    "</skill_content>",
+  ].join("\n")
+}
 
 const toOptimisticPart = (part: PromptRequestPart, sessionID: string, messageID: string): Part => {
   if (part.type === "text") {
@@ -182,6 +193,39 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
     ]
   })
 
+  const skills = Array.from(
+    input.prompt.filter(isSkillAttachment).reduce((result, attachment) => {
+      const source = {
+        value: attachment.content,
+        start: attachment.start,
+        end: attachment.end,
+      }
+      const existing = result.get(attachment.name)
+      if (existing) {
+        existing.sources.push(source)
+        return result
+      }
+      result.set(attachment.name, { attachment, sources: [source] })
+      return result
+    }, new Map<string, { attachment: SkillPart; sources: { value: string; start: number; end: number }[] }>()),
+  ).map(([, item]) => {
+    return {
+      id: Identifier.ascending("part"),
+      type: "text",
+      text: skillPromptText(item.attachment),
+      synthetic: true,
+      metadata: {
+        opencodeSkill: {
+          name: item.attachment.name,
+          description: item.attachment.description,
+          content: item.attachment.body,
+          source: item.sources[0],
+          sources: item.sources,
+        },
+      },
+    } satisfies PromptRequestPart
+  })
+
   const images = input.images.map((attachment) => {
     return {
       id: Identifier.ascending("part"),
@@ -192,7 +236,7 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
     } satisfies PromptRequestPart
   })
 
-  requestParts.push(...files, ...context, ...agents, ...images)
+  requestParts.push(...files, ...context, ...agents, ...skills, ...images)
 
   return {
     requestParts,

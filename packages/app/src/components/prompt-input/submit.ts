@@ -183,7 +183,7 @@ type PromptSubmitInput = {
   addToHistory: (prompt: Prompt, mode: "normal" | "shell") => void
   resetHistoryNavigation: () => void
   setMode: (mode: "normal" | "shell") => void
-  setPopover: (popover: "at" | "slash" | null) => void
+  setPopover: (popover: "at" | "slash" | "skill" | null) => void
   newSessionWorktree?: Accessor<string | undefined>
   onNewSessionWorktreeReset?: () => void
   shouldQueue?: Accessor<boolean>

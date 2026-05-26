@@ -1,0 +1,189 @@
+# OpenCode Windows Client Change Log
+
+> 本文件用于长期追踪个人 Windows 桌面端二开分支中的重要修改。以后新线程继续开发时，优先阅读本文件最近条目，再结合相关 handoff 文档和当前 `git status` 判断工作区状态。
+
+## 记录规范
+
+- 每次较大改动追加一个条目，不覆盖旧记录。
+- 每个条目至少包含：时间、背景、修改原则、涉及文件、具体改动、验证结果、已知问题、后续接续建议。
+- 只记录事实和工程判断，不记录账号、token、私钥等敏感信息。
+- 本文件只做追踪记录，不代表已经提交到 Git 或推送到 GitHub。
+
+## 2026-05-26 11:00:54 +08:00 - `$` skill 调用、skill 去重、文件点击打开
+
+### 背景
+
+用户希望把 OpenCode app 的 skill 调用从 `/` 迁移为类似 Codex 的 `$` 方式：输入 `$` 弹出 skill 列表；正文任意位置可多次引用 skill；发送后只显示短引用；点击短引用查看完整内容；同一个 skill 重复引用只展开一次完整内容；assistant 回复和工具卡片中的本地文件名/路径可以点击打开。
+
+### 修改原则
+
+- UI 输入层保留短引用，模型请求层通过 synthetic text part 注入 skill 内容。
+- 同名 skill 在一次请求中只注入一次完整 `SKILL.md` 内容；重复引用只保留正文里的 `$skillName`，metadata 保留所有出现位置用于高亮。
+- 发送后的用户消息只展示去重后的 skill chip；点击 chip 查看完整内容。
+- 本地文件链接只在能解析出真实全路径或有可靠别名时可点击；不再把 `AGENTS.md`、`xxx.ts` 这类裸文件名硬拼到工作区一级目录。
+- 文件打开复用 desktop 已有 `platform.openPath()` / Electron IPC，不新增主进程协议。
+- Windows 上点击本地文件优先尝试 VSCode `code`，找不到时由平台层回退系统默认打开。
+- 不启动 localhost dev server；用户会自行用正式 Debug 程序验证。
+
+### 涉及文件与修改内容
+
+#### App 输入与请求构建
+
+- `packages/app/src/context/prompt.tsx`
+  - 新增 `SkillPart` prompt part 类型。
+  - 让 prompt 可以同时包含 text、file、agent、skill、image。
+
+- `packages/app/src/components/prompt-input.tsx`
+  - 支持 `$` 触发 skill 列表。
+  - 支持在正文任意位置插入 skill pill。
+  - 支持多次插入 skill。
+  - skill pill 点击后弹出完整内容 Dialog。
+  - 修复 skill 完整内容 Dialog 滚动布局，避免 scrollbar 溢出小窗口、底部显示不全。
+
+- `packages/app/src/components/prompt-input/slash-popover.tsx`
+  - 扩展 popover 数据结构以支持 skill 列表模式。
+  - `/` 列表不再混入 skill，skill 改由 `$` 独立触发。
+
+- `packages/app/src/components/prompt-input/editor-dom.ts`
+  - 解析/渲染 contenteditable 时识别 skill pill。
+
+- `packages/app/src/components/prompt-input/history.ts`
+  - prompt history 支持保存和恢复 skill part。
+
+- `packages/app/src/components/prompt-input/submit.ts`
+  - 提交 prompt 时保留 skill part，交给 request builder 生成请求 part。
+
+- `packages/app/src/components/prompt-input/build-request-parts.ts`
+  - 将 `SkillPart` 转换为 synthetic text part。
+  - synthetic 文本格式为 `<skill_content name="...">... </skill_content>`。
+  - 同名 skill 去重：一次请求中只生成一个完整 skill 内容。
+  - metadata 写入 `opencodeSkill.name`、`description`、`content`、`source`、`sources`。
+  - `source` 保持首个出现位置，`sources` 保留所有重复引用位置。
+
+- `packages/app/src/components/prompt-input/build-request-parts.test.ts`
+  - 新增 `$skill` synthetic part 测试。
+  - 覆盖重复 `$planner` 只生成一个 synthetic skill part 的行为。
+
+- `packages/app/src/utils/prompt.ts`
+  - 从已有 message parts 恢复 prompt 时识别 skill metadata。
+  - 支持 undo/history 恢复 `$skill` 短引用和 skill pill。
+
+#### App 与 UI 数据通道
+
+- `packages/app/src/pages/directory-layout.tsx`
+  - 从 app platform 注入 `openPath` 到 UI `DataProvider`。
+  - Windows desktop 环境下优先传入 `code` 作为打开程序。
+
+- `packages/ui/src/context/data.tsx`
+  - `DataProvider` 新增 `openPath?: (path: string) => Promise<void> | void`。
+  - UI 组件可以通过 `useData().openPath` 打开本地文件。
+
+#### 消息展示与 Markdown 本地文件链接
+
+- `packages/ui/src/components/message-part.tsx`
+  - 用户消息显示 `$skill` 高亮。
+  - 用户消息下方显示去重后的 skill chip。
+  - 点击 skill chip 弹出完整 skill 内容 Dialog。
+  - Dialog 改为可滚动布局，避免长 skill 内容显示不全。
+  - edit/write/apply_patch 工具标题文件名可点击打开。
+  - apply_patch diff 折叠区文件名可点击打开，点击右侧三角仍保持原展开/收起逻辑。
+  - read 工具的“已读取”文件名可点击打开。
+  - 新增本地路径别名收集：text/reasoning 中出现的 Windows 绝对路径、file part 的 `source.path` 和 `file://` URL、tool input 的 `filePath` / `path`、tool metadata 的 `filediff.file`、`loaded`、`diagnostics`、`files[].filePath`。
+  - 裸文件名只有在能从真实路径别名反查时才可点击。
+
+- `packages/ui/src/components/message-part.css`
+  - 新增可点击文件名的 cursor 和 hover underline 样式。
+  - 保持原工具卡片布局和折叠操作。
+
+- `packages/ui/src/components/markdown.tsx`
+  - Markdown 渲染后识别本地文件路径/文件名。
+  - 通过 `localFileAliases` 解析裸文件名或相对片段到真实全路径。
+  - 只对可解析路径生成 `markdown-local-file-link`。
+  - 点击链接调用 `openLocalFile(path)`。
+  - 避免在 `pre`、`code`、已有 `a`、`button` 内重复包裹。
+
+- `packages/ui/src/components/markdown.css`
+  - 新增本地文件链接样式。
+  - 复用交互色和 hover underline。
+
+- `packages/ui/src/components/dialog.css`
+  - `dialog-body` 增加 `min-height: 0`，让内部 flex 滚动区域正确收缩。
+
+### 当前工作区文件状态
+
+本条记录对应的代码改动文件：
+
+- `packages/app/src/components/prompt-input.tsx`
+- `packages/app/src/components/prompt-input/build-request-parts.test.ts`
+- `packages/app/src/components/prompt-input/build-request-parts.ts`
+- `packages/app/src/components/prompt-input/editor-dom.ts`
+- `packages/app/src/components/prompt-input/history.ts`
+- `packages/app/src/components/prompt-input/slash-popover.tsx`
+- `packages/app/src/components/prompt-input/submit.ts`
+- `packages/app/src/context/prompt.tsx`
+- `packages/app/src/pages/directory-layout.tsx`
+- `packages/app/src/utils/prompt.ts`
+- `packages/ui/src/components/dialog.css`
+- `packages/ui/src/components/markdown.css`
+- `packages/ui/src/components/markdown.tsx`
+- `packages/ui/src/components/message-part.css`
+- `packages/ui/src/components/message-part.tsx`
+- `packages/ui/src/context/data.tsx`
+
+额外说明：
+
+- 当前工作区曾出现 `bun.lock` dirty 状态，但 `git diff --name-status` 和 `git diff --stat` 未显示实际内容差异；本次功能记录不把它视为有意修改内容。
+- 当前还有历史生成的未跟踪文档，例如桌面架构说明和 `$ skill` handoff 文档，提交前需要统一审阅。
+
+### 验证结果
+
+已执行并通过：
+
+- `packages/app`: `bun test src/components/prompt-input/build-request-parts.test.ts`
+  - 13 pass。
+  - 覆盖重复 `$planner` 只生成一个 synthetic skill 内容。
+
+- `packages/app`: `bun run test:unit`
+  - 334 pass。
+
+- `packages/ui`: `bun run typecheck`
+  - 通过。
+
+- `packages/ui`: `bun run test`
+  - 21 pass。
+
+- `packages/app`: 临时 `tsgo` typecheck
+  - 使用临时 `tsconfig.codex-check.json` 排除已知 Windows symlink 文件 `src/custom-elements.d.ts`。
+  - 通过。
+
+- 仓库根目录：`git diff --check`
+  - 通过。
+
+未通过但属于已知环境问题：
+
+- `packages/app`: 正式 `bun run typecheck`
+  - 失败在 `src/custom-elements.d.ts`。
+  - Windows checkout 当前把官方 symlink 展开成普通文本 `../../ui/src/custom-elements.d.ts`，导致 TS 解析失败。
+  - 此问题不是本次 `$ skill` / 文件点击改造引入。
+
+### 行为确认清单
+
+后续打开正式 Debug 程序时重点测：
+
+- 空输入框输入 `$` 可以弹出 skill 列表。
+- 正文中任意位置输入 `$` 可以弹出 skill 列表。
+- 同一个 skill 多次插入后，发送消息下方只显示一个 skill chip。
+- 同一个 skill 多次插入后，模型请求只包含一次完整 skill 内容。
+- 点击 skill chip 可以查看完整 skill 内容，长内容滚动正常。
+- undo/history 可以恢复 skill pill。
+- assistant 回复中的完整 Windows 本地路径可点击打开。
+- 只有在消息/工具上下文中能反查真实路径时，裸文件名才可点击。
+- edit/write/apply_patch 工具标题文件名点击打开文件，右侧三角仍只负责展开/收起。
+
+### 后续接续建议
+
+新线程继续时可直接说：
+
+```text
+继续 OpenCode Windows 桌面端 `$ skill` 二开。先读 AI_HELP_MD/CODEX_OPENCODE_WINDOWS_CLIENT_CHANGELOG.md 最新条目，再检查当前 git status。不要提交。重点验证 `$skill` 去重、skill chip 展示、Markdown 本地文件点击打开、apply_patch 文件名点击打开和正式 Debug 程序中的实际行为。
+```

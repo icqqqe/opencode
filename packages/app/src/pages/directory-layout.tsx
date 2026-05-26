@@ -4,6 +4,7 @@ import { base64Encode } from "@opencode-ai/core/util/encode"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { createEffect, createMemo, createResource, type ParentProps, Show } from "solid-js"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 import { LocalProvider } from "@/context/local"
 import { SDKProvider } from "@/context/sdk"
 import { useSync } from "@/context/sync"
@@ -15,6 +16,7 @@ function DirectoryDataProvider(props: ParentProps<{ directory: string }>) {
   const navigate = useNavigate()
   const params = useParams()
   const sync = useSync()
+  const platform = usePlatform()
   const slug = createMemo(() => base64Encode(props.directory))
 
   createEffect(() => {
@@ -35,6 +37,11 @@ function DirectoryDataProvider(props: ParentProps<{ directory: string }>) {
       directory={props.directory}
       onNavigateToSession={(sessionID: string) => navigate(`/${slug()}/session/${sessionID}`)}
       onSessionHref={(sessionID: string) => `/${slug()}/session/${sessionID}`}
+      openPath={
+        platform.platform === "desktop" && platform.openPath
+          ? (path: string) => platform.openPath?.(path, platform.os === "windows" ? "code" : undefined)
+          : undefined
+      }
     >
       <LocalProvider>{props.children}</LocalProvider>
     </DataProvider>

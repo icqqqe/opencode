@@ -78,6 +78,204 @@ function codeUrl(text: string) {
   }
 }
 
+type LocalFileLinks = {
+  directory?: string
+  open: (path: string) => Promise<void> | void
+  aliases: Map<string, string>
+}
+
+const localFileExtensionSource =
+  "(?:d\\.ts|md|markdown|tsx?|jsx?|mjs|cjs|jsonc?|ya?ml|toml|txt|css|scss|html?|py|rs|go|java|c|cc|cpp|cxx|h|hh|hpp|cs|lua|xml|csv|ini|sh|bash|bat|cmd|ps1)"
+const windowsPathSource = String.raw`[A-Za-z]:\\[^\s<>"|?*]+?\.${localFileExtensionSource}(?::\d+)?`
+const uncPathSource = String.raw`\\\\[^\s<>"|?*]+?\.${localFileExtensionSource}(?::\d+)?`
+const posixPathSource = String.raw`\/[^\s<>"']+?\.${localFileExtensionSource}(?::\d+)?`
+const relativePathSource = String.raw`(?:\.{1,2}[\\/])?(?:[A-Za-z0-9_.@()[\]-]+[\\/])+[A-Za-z0-9_.@()[\]-]+\.${localFileExtensionSource}(?::\d+)?`
+const filenameSource = String.raw`[A-Za-z0-9_.@()[\]-]+\.${localFileExtensionSource}(?::\d+)?`
+const localFileTextPattern = new RegExp(
+  [windowsPathSource, uncPathSource, posixPathSource, relativePathSource, filenameSource].join("|"),
+  "gi",
+)
+const localFileNamePattern = new RegExp(String.raw`^${filenameSource}$`, "i")
+
+function trimLocalFileCandidate(value: string) {
+  return value
+    .trim()
+    .replace(/^[`'"\u2018\u201C]+/g, "")
+    .replace(/[\`'"\u2019\u201D,.;!?\uFF0C\u3002\uFF1B\uFF1A\uFF01\uFF1F\u3001)\]}\uFF09\u3011\u300B]+$/g, "")
+}
+
+function stripLocalFileLineSuffix(value: string) {
+  const match = value.match(/^(.*):\d+(?::\d+)?$/)
+  if (!match) return value
+  if (/^[A-Za-z]$/.test(match[1] ?? "")) return value
+  return match[1] ?? value
+}
+
+function normalizeLocalFileCandidate(value: string) {
+  return stripLocalFileLineSuffix(trimLocalFileCandidate(value))
+}
+
+function isAbsoluteLocalPath(value: string) {
+  return /^[A-Za-z]:[\\/]/.test(value) || /^\\\\/.test(value) || value.startsWith("/")
+}
+
+function hasPathSeparator(value: string) {
+  return value.includes("\\") || value.includes("/")
+}
+
+function isExplicitRelativePath(value: string) {
+  return value.startsWith("./") || value.startsWith("../") || value.startsWith(".\\") || value.startsWith("..\\")
+}
+
+function normalizeLocalPathKey(value: string) {
+  return normalizeLocalFileCandidate(value).replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+/g, "/").toLowerCase()
+}
+
+function localFileAliasKeys(value: string) {
+  const key = normalizeLocalPathKey(value)
+  const parts = key.split("/").filter(Boolean)
+  return parts.map((_, index) => parts.slice(index).join("/"))
+}
+
+function localFileBasename(value: string) {
+  return localFileAliasKeys(value).at(-1) ?? ""
+}
+
+function joinLocalPath(directory: string | undefined, value: string) {
+  if (!directory) return
+  const separator = directory.includes("\\") ? "\\" : "/"
+  const base = directory.replace(/[\\/]$/, "")
+  const child = value.replace(/^\.([\\/])/, "").replace(/^[\\/]/, "")
+  if (!child) return base
+  return `${base}${separator}${child}`
+}
+
+function setLocalFileAlias(aliases: Map<string, string>, value: string, directory?: string) {
+  const path = normalizeLocalFileCandidate(value)
+  if (!path) return
+  if (!isAbsoluteLocalPath(path) && !hasPathSeparator(path)) return
+  const resolved = isAbsoluteLocalPath(path) ? path : joinLocalPath(directory, path)
+  if (!resolved) return
+
+  for (const key of [...localFileAliasKeys(path), ...localFileAliasKeys(resolved)]) {
+    if (key) aliases.set(key, resolved)
+  }
+}
+
+function resolveLocalFileAlias(value: string, options: LocalFileLinks) {
+  for (const key of localFileAliasKeys(value)) {
+    const resolved = options.aliases.get(key)
+    if (resolved) return resolved
+  }
+}
+
+function resolveLocalFileCandidate(raw: string, options: LocalFileLinks) {
+  const value = normalizeLocalFileCandidate(raw)
+  if (!value || value.includes("://")) return
+  if (isAbsoluteLocalPath(value)) return value
+
+  const aliased = resolveLocalFileAlias(value, options)
+  if (aliased) return aliased
+
+  if (isExplicitRelativePath(value)) return joinLocalPath(options.directory, value)
+  if (!hasPathSeparator(value) || localFileNamePattern.test(value)) return
+}
+
+function collectLocalFileAliases(markdown: string, directory?: string, extraPaths?: string[]) {
+  const aliases = new Map<string, string>()
+  for (const path of extraPaths ?? []) {
+    setLocalFileAlias(aliases, path, directory)
+  }
+
+  localFileTextPattern.lastIndex = 0
+  for (const match of markdown.matchAll(localFileTextPattern)) {
+    setLocalFileAlias(aliases, match[0], directory)
+  }
+  return aliases
+}
+
+function createLocalFileLink(text: string, path: string) {
+  const link = document.createElement("a")
+  link.href = "#"
+  link.setAttribute("data-slot", "markdown-local-file-link")
+  link.setAttribute("data-local-path", path)
+  link.title = path
+  link.textContent = text
+  return link
+}
+
+function markLocalCodeLinks(root: HTMLDivElement, options: LocalFileLinks) {
+  const codeNodes = Array.from(root.querySelectorAll(":not(pre) > code"))
+  for (const code of codeNodes) {
+    const path = resolveLocalFileCandidate(code.textContent ?? "", options)
+    const parentLink =
+      code.parentElement instanceof HTMLAnchorElement &&
+      code.parentElement.getAttribute("data-slot") === "markdown-local-file-link"
+        ? code.parentElement
+        : null
+
+    if (!path) {
+      if (parentLink) parentLink.replaceWith(code)
+      continue
+    }
+
+    if (parentLink) {
+      parentLink.setAttribute("data-local-path", path)
+      parentLink.title = path
+      continue
+    }
+
+    const link = createLocalFileLink(code.textContent ?? "", path)
+    code.parentNode?.replaceChild(link, code)
+    link.textContent = ""
+    link.appendChild(code)
+  }
+}
+
+function linkLocalFilesInTextNode(node: Text, options: LocalFileLinks) {
+  const text = node.nodeValue ?? ""
+  const matches = Array.from(text.matchAll(localFileTextPattern))
+    .map((match) => ({ index: match.index ?? 0, text: match[0], path: resolveLocalFileCandidate(match[0], options) }))
+    .filter((match): match is { index: number; text: string; path: string } => !!match.path)
+  if (matches.length === 0) return
+
+  const fragment = document.createDocumentFragment()
+  let cursor = 0
+  for (const match of matches) {
+    if (match.index < cursor) continue
+    if (match.index > cursor) fragment.appendChild(document.createTextNode(text.slice(cursor, match.index)))
+    fragment.appendChild(createLocalFileLink(match.text, match.path))
+    cursor = match.index + match.text.length
+  }
+  if (cursor < text.length) fragment.appendChild(document.createTextNode(text.slice(cursor)))
+  node.parentNode?.replaceChild(fragment, node)
+}
+
+function markLocalTextLinks(root: HTMLDivElement, options: LocalFileLinks) {
+  const nodes: Text[] = []
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement
+      if (!parent) return NodeFilter.FILTER_REJECT
+      if (parent.closest("pre, code, a, button")) return NodeFilter.FILTER_REJECT
+      return NodeFilter.FILTER_ACCEPT
+    },
+  })
+
+  while (walker.nextNode()) {
+    if (walker.currentNode instanceof Text) nodes.push(walker.currentNode)
+  }
+
+  for (const node of nodes) {
+    linkLocalFilesInTextNode(node, options)
+  }
+}
+
+function markLocalFileLinks(root: HTMLDivElement, options: LocalFileLinks) {
+  markLocalCodeLinks(root, options)
+  markLocalTextLinks(root, options)
+}
+
 function createIcon(path: string, slot: string) {
   const icon = document.createElement("div")
   icon.setAttribute("data-component", "icon")
@@ -175,12 +373,13 @@ function markCodeLinks(root: HTMLDivElement) {
   }
 }
 
-function decorate(root: HTMLDivElement, labels: CopyLabels) {
+function decorate(root: HTMLDivElement, labels: CopyLabels, localFiles?: LocalFileLinks) {
   const blocks = Array.from(root.querySelectorAll("pre"))
   for (const block of blocks) {
     ensureCodeWrapper(block, labels)
   }
   markCodeLinks(root)
+  if (localFiles) markLocalFileLinks(root, localFiles)
 }
 
 function setupCodeCopy(root: HTMLDivElement, getLabels: () => CopyLabels) {
@@ -227,6 +426,27 @@ function setupCodeCopy(root: HTMLDivElement, getLabels: () => CopyLabels) {
   }
 }
 
+function setupLocalFileOpen(root: HTMLDivElement, getOpen: () => ((path: string) => Promise<void> | void) | undefined) {
+  const handleClick = (event: MouseEvent) => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+
+    const link = target.closest('[data-slot="markdown-local-file-link"]')
+    if (!(link instanceof HTMLElement)) return
+
+    const path = link.dataset.localPath
+    const open = getOpen()
+    if (!path || !open) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    void Promise.resolve(open(path)).catch(() => {})
+  }
+
+  root.addEventListener("click", handleClick)
+  return () => root.removeEventListener("click", handleClick)
+}
+
 function touch(key: string, value: Entry) {
   cache.delete(key)
   cache.set(key, value)
@@ -245,9 +465,21 @@ export function Markdown(
     streaming?: boolean
     class?: string
     classList?: Record<string, boolean>
+    localFileDirectory?: string
+    localFileAliases?: string[]
+    openLocalFile?: (path: string) => Promise<void> | void
   },
 ) {
-  const [local, others] = splitProps(props, ["text", "cacheKey", "streaming", "class", "classList"])
+  const [local, others] = splitProps(props, [
+    "text",
+    "cacheKey",
+    "streaming",
+    "class",
+    "classList",
+    "localFileDirectory",
+    "localFileAliases",
+    "openLocalFile",
+  ])
   const marked = useMarked()
   const i18n = useI18n()
   const [root, setRoot] = createSignal<HTMLDivElement>()
@@ -288,6 +520,7 @@ export function Markdown(
   )
 
   let copyCleanup: (() => void) | undefined
+  let localFileCleanup: (() => void) | undefined
 
   createEffect(() => {
     const container = root()
@@ -306,7 +539,17 @@ export function Markdown(
     }
     const temp = document.createElement("div")
     temp.innerHTML = content
-    decorate(temp, labels)
+    decorate(
+      temp,
+      labels,
+      local.openLocalFile
+        ? {
+            directory: local.localFileDirectory,
+            open: local.openLocalFile,
+            aliases: collectLocalFileAliases(local.text, local.localFileDirectory, local.localFileAliases),
+          }
+        : undefined,
+    )
 
     morphdom(container, temp, {
       childrenOnly: true,
@@ -330,10 +573,13 @@ export function Markdown(
         copy: i18n.t("ui.message.copy"),
         copied: i18n.t("ui.message.copied"),
       }))
+    if (!localFileCleanup && local.openLocalFile)
+      localFileCleanup = setupLocalFileOpen(container, () => local.openLocalFile)
   })
 
   onCleanup(() => {
     if (copyCleanup) copyCleanup()
+    if (localFileCleanup) localFileCleanup()
   })
 
   return (

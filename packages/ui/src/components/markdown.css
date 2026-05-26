@@ -260,7 +260,19 @@
   }
 }
 
-[data-component="markdown"] a.external-link:hover > code {
+[data-component="markdown"] a.external-link:hover > code,
+[data-component="markdown"] [data-slot="markdown-local-file-link"]:hover > code {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+[data-component="markdown"] [data-slot="markdown-local-file-link"] {
+  color: var(--text-interactive-base);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+[data-component="markdown"] [data-slot="markdown-local-file-link"]:hover {
   text-decoration: underline;
   text-underline-offset: 2px;
 }

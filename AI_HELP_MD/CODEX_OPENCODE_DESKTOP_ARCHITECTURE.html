@@ -1,0 +1,1174 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenCode 桌面端架构动态讲解</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8fb;
+        --panel: #ffffff;
+        --panel-soft: #f0f5f3;
+        --text: #17201d;
+        --muted: #5e6b66;
+        --line: #aeb8b4;
+        --strong: #0d5c63;
+        --strong-soft: #d8eeef;
+        --accent: #b24d2d;
+        --accent-soft: #f5dfd5;
+        --violet: #5a4a9f;
+        --violet-soft: #e5e1f5;
+        --green: #2e6b3f;
+        --green-soft: #dff0e4;
+        --border: #d7dedb;
+        --shadow: 0 18px 60px rgba(16, 24, 32, 0.08);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Microsoft YaHei", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.55;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .page {
+        min-height: 100vh;
+      }
+
+      .hero {
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+      }
+
+      .hero-inner {
+        max-width: 1220px;
+        margin: 0 auto;
+        padding: 30px 28px 22px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--strong);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(28px, 4vw, 46px);
+        line-height: 1.12;
+        letter-spacing: 0;
+      }
+
+      .hero-copy {
+        max-width: 860px;
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      .layout {
+        max-width: 1220px;
+        margin: 0 auto;
+        padding: 22px 28px 42px;
+        display: grid;
+        grid-template-columns: 240px minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
+      }
+
+      .side {
+        position: sticky;
+        top: 16px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      .side-title {
+        margin: 0 0 10px;
+        font-size: 13px;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .nav-btn,
+      .control-btn,
+      .tab-btn,
+      .step-btn,
+      .link-btn {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--text);
+        cursor: pointer;
+        border-radius: 6px;
+        transition:
+          background 0.15s ease,
+          border-color 0.15s ease,
+          color 0.15s ease,
+          transform 0.15s ease;
+      }
+
+      .nav-btn {
+        width: 100%;
+        display: block;
+        text-align: left;
+        padding: 9px 10px;
+        margin: 6px 0;
+      }
+
+      .nav-btn.active,
+      .nav-btn:hover,
+      .control-btn:hover,
+      .tab-btn.active,
+      .step-btn.active,
+      .link-btn.active {
+        border-color: var(--strong);
+        background: var(--strong-soft);
+        color: #073b40;
+      }
+
+      main {
+        display: grid;
+        gap: 18px;
+      }
+
+      section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        padding: 20px;
+      }
+
+      section h2 {
+        margin: 0 0 10px;
+        font-size: 22px;
+        letter-spacing: 0;
+      }
+
+      section p {
+        margin: 8px 0;
+        color: var(--muted);
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .pill {
+        border: 1px solid var(--border);
+        background: var(--panel-soft);
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .diagram-wrap {
+        overflow-x: auto;
+        padding-bottom: 6px;
+      }
+
+      .diagram-canvas {
+        position: relative;
+        width: 1000px;
+        height: 560px;
+        margin-top: 18px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background:
+          linear-gradient(#eef3f1 1px, transparent 1px),
+          linear-gradient(90deg, #eef3f1 1px, transparent 1px),
+          #fbfcfd;
+        background-size: 32px 32px;
+      }
+
+      .group {
+        position: absolute;
+        border: 1px dashed #b7c3bf;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.72);
+        padding: 10px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .group.desktop {
+        left: 28px;
+        top: 30px;
+        width: 340px;
+        height: 440px;
+      }
+
+      .group.sidecar {
+        left: 430px;
+        top: 84px;
+        width: 270px;
+        height: 320px;
+      }
+
+      .group.resource {
+        left: 760px;
+        top: 30px;
+        width: 210px;
+        height: 472px;
+      }
+
+      .node {
+        position: absolute;
+        min-height: 82px;
+        padding: 12px;
+        border: 2px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: 0 10px 24px rgba(16, 24, 32, 0.08);
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 4px;
+      }
+
+      .node:focus {
+        outline: 3px solid var(--strong-soft);
+        outline-offset: 2px;
+      }
+
+      .node-title {
+        font-weight: 800;
+        line-height: 1.2;
+      }
+
+      .node-sub {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .node.main {
+        left: 70px;
+        top: 86px;
+        width: 250px;
+        border-color: var(--strong);
+      }
+
+      .node.preload {
+        left: 70px;
+        top: 230px;
+        width: 250px;
+        border-color: var(--violet);
+      }
+
+      .node.renderer {
+        left: 70px;
+        top: 354px;
+        width: 250px;
+        border-color: var(--accent);
+      }
+
+      .node.sidecar-node {
+        left: 470px;
+        top: 150px;
+        width: 190px;
+        border-color: var(--violet);
+      }
+
+      .node.server {
+        left: 470px;
+        top: 282px;
+        width: 190px;
+        border-color: var(--strong);
+      }
+
+      .node.resource {
+        left: 790px;
+        width: 150px;
+        min-height: 56px;
+        padding: 9px;
+      }
+
+      .node.db {
+        top: 82px;
+      }
+
+      .node.fs {
+        top: 152px;
+      }
+
+      .node.shell {
+        top: 222px;
+      }
+
+      .node.git {
+        top: 292px;
+      }
+
+      .node.lsp {
+        top: 362px;
+      }
+
+      .node.model {
+        top: 432px;
+      }
+
+      .node.active {
+        background: var(--strong-soft);
+        transform: translateY(-2px);
+      }
+
+      .node.related {
+        background: var(--accent-soft);
+      }
+
+      .edges {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .edge {
+        fill: none;
+        stroke: var(--line);
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-dasharray: 0;
+      }
+
+      .edge.dashed {
+        stroke-dasharray: 9 8;
+      }
+
+      .edge.active {
+        stroke: var(--accent);
+        stroke-width: 5;
+      }
+
+      .panel-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        gap: 16px;
+        align-items: start;
+      }
+
+      .info-panel {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #fbfcfd;
+        padding: 16px;
+        min-height: 240px;
+      }
+
+      .info-panel h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      .info-panel ul {
+        margin: 10px 0 0;
+        padding-left: 20px;
+        color: var(--muted);
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 14px 0;
+      }
+
+      .control-btn,
+      .tab-btn,
+      .step-btn,
+      .link-btn {
+        padding: 8px 11px;
+      }
+
+      .timeline {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .step-btn {
+        text-align: left;
+        min-height: 64px;
+      }
+
+      .step-number {
+        display: block;
+        color: var(--strong);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .code-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 14px 0 10px;
+      }
+
+      pre {
+        margin: 0;
+        padding: 16px;
+        border-radius: 8px;
+        border: 1px solid #26342f;
+        background: #111a17;
+        color: #e8f0ed;
+        overflow: auto;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      code {
+        font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+      }
+
+      .matrix {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+        font-size: 14px;
+      }
+
+      .matrix th,
+      .matrix td {
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        padding: 10px 8px;
+        vertical-align: top;
+      }
+
+      .matrix th {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .matrix tr.active td {
+        background: var(--strong-soft);
+      }
+
+      .source-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .source {
+        display: block;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+        color: var(--text);
+        text-decoration: none;
+        background: #fbfcfd;
+      }
+
+      .source:hover {
+        border-color: var(--strong);
+        background: var(--strong-soft);
+      }
+
+      .source small {
+        display: block;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+
+      @media (max-width: 900px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .side {
+          position: static;
+        }
+
+        .panel-grid,
+        .source-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .timeline {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 560px) {
+        .hero-inner,
+        .layout {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        section {
+          padding: 16px;
+        }
+
+        .timeline {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">OpenCode Windows Desktop Fork</p>
+          <h1>桌面端架构动态讲解</h1>
+          <p class="hero-copy">
+            这页用交互图解释 OpenCode 桌面版有哪些进程、它们怎么通信、启动流程怎么走，以及一次用户请求如何从 UI 进入本地 OpenCode Server。
+          </p>
+          <div class="pill-row">
+            <span class="pill">Electron Main</span>
+            <span class="pill">Renderer UI</span>
+            <span class="pill">Preload IPC</span>
+            <span class="pill">Utility Sidecar</span>
+            <span class="pill">HTTP / SSE / WebSocket</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="layout">
+        <aside class="side" aria-label="页面导航">
+          <p class="side-title">讲解目录</p>
+          <button class="nav-btn active" data-scroll="big-picture">整体图</button>
+          <button class="nav-btn" data-scroll="boot-flow">启动流程</button>
+          <button class="nav-btn" data-scroll="comm">通信方式</button>
+          <button class="nav-btn" data-scroll="request">请求链路</button>
+          <button class="nav-btn" data-scroll="code">伪代码</button>
+          <button class="nav-btn" data-scroll="sources">源码入口</button>
+        </aside>
+
+        <main>
+          <section id="big-picture">
+            <h2>整体进程图</h2>
+            <p>
+              点击图中的节点可以查看职责说明。重点记住：桌面 UI 和核心服务不是同一个进程，UI 主要通过本地 HTTP 服务访问核心能力。
+            </p>
+
+            <div class="panel-grid">
+              <div class="diagram-wrap">
+                <div class="diagram-canvas" aria-label="OpenCode 桌面端进程架构图">
+                  <svg class="edges" viewBox="0 0 1000 560" aria-hidden="true">
+                    <path class="edge" data-edge="renderer-preload" d="M195 354 L195 312" />
+                    <path class="edge" data-edge="preload-main" d="M195 230 L195 168" />
+                    <path class="edge dashed" data-edge="main-sidecar" d="M320 128 C390 128 400 190 470 190" />
+                    <path class="edge" data-edge="sidecar-server" d="M565 232 L565 282" />
+                    <path class="edge dashed" data-edge="renderer-server" d="M320 396 C410 478 520 448 565 364" />
+                    <path class="edge" data-edge="server-resources" d="M660 324 C720 324 730 110 790 110" />
+                    <path class="edge" data-edge="server-resources" d="M660 324 C720 324 730 180 790 180" />
+                    <path class="edge" data-edge="server-resources" d="M660 324 C720 324 730 250 790 250" />
+                    <path class="edge" data-edge="server-resources" d="M660 324 C720 324 730 320 790 320" />
+                    <path class="edge" data-edge="server-resources" d="M660 324 C720 324 730 390 790 390" />
+                    <path class="edge" data-edge="server-resources" d="M660 324 C720 324 730 460 790 460" />
+                  </svg>
+
+                  <div class="group desktop">Electron Desktop App</div>
+                  <div class="group sidecar">Sidecar Utility Process</div>
+                  <div class="group resource">Local Resources</div>
+
+                  <button class="node main active" data-node="main">
+                    <span class="node-title">Electron Main</span>
+                    <span class="node-sub">窗口、菜单、启动 sidecar</span>
+                  </button>
+                  <button class="node preload" data-node="preload">
+                    <span class="node-title">Preload Bridge</span>
+                    <span class="node-sub">安全暴露 window.api</span>
+                  </button>
+                  <button class="node renderer" data-node="renderer">
+                    <span class="node-title">Renderer UI</span>
+                    <span class="node-sub">packages/app 前端界面</span>
+                  </button>
+                  <button class="node sidecar-node" data-node="sidecar">
+                    <span class="node-title">Utility Sidecar</span>
+                    <span class="node-sub">独立子进程入口</span>
+                  </button>
+                  <button class="node server" data-node="server">
+                    <span class="node-title">OpenCode Server</span>
+                    <span class="node-sub">核心业务服务</span>
+                  </button>
+                  <button class="node resource db" data-node="db">
+                    <span class="node-title">SQLite / State</span>
+                  </button>
+                  <button class="node resource fs" data-node="fs">
+                    <span class="node-title">Workspace Files</span>
+                  </button>
+                  <button class="node resource shell" data-node="shell">
+                    <span class="node-title">Shell / PTY</span>
+                  </button>
+                  <button class="node resource git" data-node="git">
+                    <span class="node-title">Git / VCS</span>
+                  </button>
+                  <button class="node resource lsp" data-node="lsp">
+                    <span class="node-title">LSP / MCP</span>
+                  </button>
+                  <button class="node resource model" data-node="model">
+                    <span class="node-title">Model Provider</span>
+                  </button>
+                </div>
+              </div>
+
+              <aside class="info-panel">
+                <h3 id="node-title">Electron Main</h3>
+                <p id="node-desc">
+                  桌面主进程负责 Electron 生命周期、窗口、菜单、更新、日志、协议处理，并在启动时拉起本地 sidecar server。
+                </p>
+                <ul id="node-points">
+                  <li>入口是 `packages/desktop/src/main/index.ts`。</li>
+                  <li>分配 `127.0.0.1` 随机端口。</li>
+                  <li>通过 `utilityProcess.fork()` 启动 sidecar。</li>
+                </ul>
+              </aside>
+            </div>
+          </section>
+
+          <section id="boot-flow">
+            <h2>启动流程</h2>
+            <p>
+              这组步骤展示桌面版从系统启动到 UI 连接本地 OpenCode Server 的过程。可以逐步点击，也可以播放。
+            </p>
+            <div class="controls">
+              <button class="control-btn" id="prev-step">上一步</button>
+              <button class="control-btn" id="play-step">播放</button>
+              <button class="control-btn" id="next-step">下一步</button>
+              <button class="control-btn" id="reset-step">重置</button>
+            </div>
+            <div class="info-panel">
+              <h3 id="step-title">1. Electron Main 启动</h3>
+              <p id="step-desc">初始化日志、证书、代理、单实例锁和桌面协议，然后准备启动本地服务。</p>
+            </div>
+            <div class="timeline" id="timeline"></div>
+          </section>
+
+          <section id="comm">
+            <h2>通信方式</h2>
+            <p>
+              OpenCode 桌面端不是只用一种 IPC。主业务链路是 renderer 到本地 server 的 HTTP / SSE / WebSocket；桌面壳能力则走 Electron IPC。
+            </p>
+            <div class="controls" id="link-controls">
+              <button class="link-btn active" data-link="renderer-preload">Renderer -> Preload</button>
+              <button class="link-btn" data-link="preload-main">Preload -> Main</button>
+              <button class="link-btn" data-link="main-sidecar">Main -> Sidecar</button>
+              <button class="link-btn" data-link="renderer-server">Renderer -> Server</button>
+              <button class="link-btn" data-link="server-resources">Server -> Resources</button>
+            </div>
+            <table class="matrix">
+              <thead>
+                <tr>
+                  <th>两端</th>
+                  <th>通信方式</th>
+                  <th>典型用途</th>
+                </tr>
+              </thead>
+              <tbody id="comm-table"></tbody>
+            </table>
+          </section>
+
+          <section id="request">
+            <h2>一次请求怎么走</h2>
+            <p>用户在输入框提交 prompt 后，前端不会直接操作文件或模型，而是通过 SDK 请求本地 server。</p>
+            <div class="diagram-wrap">
+              <div class="diagram-canvas" style="height: 250px">
+                <svg class="edges" viewBox="0 0 1000 250" aria-hidden="true">
+                  <path class="edge active" d="M155 126 L290 126" />
+                  <path class="edge active" d="M425 126 L560 126" />
+                  <path class="edge active" d="M695 126 L830 126" />
+                </svg>
+                <button class="node active" style="left: 40px; top: 82px; width: 170px; border-color: var(--accent)">
+                  <span class="node-title">Prompt Input</span>
+                  <span class="node-sub">packages/app</span>
+                </button>
+                <button class="node active" style="left: 290px; top: 82px; width: 170px; border-color: var(--violet)">
+                  <span class="node-title">SDK Client</span>
+                  <span class="node-sub">HTTP request</span>
+                </button>
+                <button class="node active" style="left: 560px; top: 82px; width: 170px; border-color: var(--strong)">
+                  <span class="node-title">Session Service</span>
+                  <span class="node-sub">packages/opencode</span>
+                </button>
+                <button class="node active" style="left: 830px; top: 82px; width: 130px; border-color: var(--green)">
+                  <span class="node-title">Model / Tool</span>
+                  <span class="node-sub">Provider / Local</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section id="code">
+            <h2>启动伪代码</h2>
+            <p>下面是讲解用伪代码，不是源码逐行翻译。用它快速建立调用关系。</p>
+            <div class="code-tabs">
+              <button class="tab-btn active" data-code="main">Electron Main</button>
+              <button class="tab-btn" data-code="spawn">spawnLocalServer</button>
+              <button class="tab-btn" data-code="sidecar">Sidecar</button>
+              <button class="tab-btn" data-code="preload">Preload</button>
+              <button class="tab-btn" data-code="renderer">Renderer</button>
+            </div>
+            <pre><code id="code-block"></code></pre>
+          </section>
+
+          <section id="sources">
+            <h2>关键源码入口</h2>
+            <p>后续排查时按问题归属进入对应目录。</p>
+            <div class="source-grid">
+              <a class="source" href="../packages/desktop/src/main/index.ts">
+                Electron main 启动
+                <small>packages/desktop/src/main/index.ts</small>
+              </a>
+              <a class="source" href="../packages/desktop/src/main/server.ts">
+                sidecar 进程启动管理
+                <small>packages/desktop/src/main/server.ts</small>
+              </a>
+              <a class="source" href="../packages/desktop/src/main/sidecar.ts">
+                sidecar 进程入口
+                <small>packages/desktop/src/main/sidecar.ts</small>
+              </a>
+              <a class="source" href="../packages/desktop/src/preload/index.ts">
+                preload IPC 暴露
+                <small>packages/desktop/src/preload/index.ts</small>
+              </a>
+              <a class="source" href="../packages/app/src/components/prompt-input.tsx">
+                前端输入框
+                <small>packages/app/src/components/prompt-input.tsx</small>
+              </a>
+              <a class="source" href="../packages/app/src/context/global-sdk.tsx">
+                前端 SDK 上下文
+                <small>packages/app/src/context/global-sdk.tsx</small>
+              </a>
+              <a class="source" href="../packages/opencode/src/server/server.ts">
+                OpenCode Server listen
+                <small>packages/opencode/src/server/server.ts</small>
+              </a>
+              <a class="source" href="../packages/opencode/src/session/prompt.ts">
+                Session prompt 主流程
+                <small>packages/opencode/src/session/prompt.ts</small>
+              </a>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script>
+      const nodeInfo = {
+        main: {
+          title: "Electron Main",
+          desc: "桌面主进程负责 Electron 生命周期、窗口、菜单、更新、日志、协议处理，并在启动时拉起本地 sidecar server。",
+          points: [
+            "入口是 packages/desktop/src/main/index.ts。",
+            "分配 127.0.0.1 随机端口。",
+            "通过 utilityProcess.fork() 启动 sidecar。",
+          ],
+          edges: ["preload-main", "main-sidecar"],
+        },
+        preload: {
+          title: "Preload Bridge",
+          desc: "preload 是 renderer 和 main 之间的安全桥。它把少量桌面能力暴露成 window.api，避免 renderer 直接拿到完整 Node 权限。",
+          points: [
+            "入口是 packages/desktop/src/preload/index.ts。",
+            "使用 contextBridge.exposeInMainWorld()。",
+            "内部调用 ipcRenderer.invoke/send。",
+          ],
+          edges: ["renderer-preload", "preload-main"],
+        },
+        renderer: {
+          title: "Renderer UI",
+          desc: "Renderer 跑 packages/app 的 Solid UI。它负责展示会话、输入框、设置、权限弹窗等交互界面。",
+          points: [
+            "通过 window.api 拿 sidecar server URL。",
+            "通过 SDK 请求本地 OpenCode Server。",
+            "大部分业务状态来自 HTTP API 和事件流。",
+          ],
+          edges: ["renderer-preload", "renderer-server"],
+        },
+        sidecar: {
+          title: "Utility Sidecar",
+          desc: "sidecar 是 Electron main 拉起的 utility process。它负责加载打包后的 OpenCode Server 并监听本地端口。",
+          points: [
+            "入口是 packages/desktop/src/main/sidecar.ts。",
+            "由 packages/desktop/src/main/server.ts 管理生命周期。",
+            "和 main 之间用 postMessage/on('message') 通信。",
+          ],
+          edges: ["main-sidecar", "sidecar-server"],
+        },
+        server: {
+          title: "OpenCode Local Server",
+          desc: "核心业务服务。Session、Agent、模型调用、工具调用、Skill、MCP、权限、文件操作和事件流都在这一层。",
+          points: [
+            "核心目录是 packages/opencode。",
+            "对 renderer 暴露 HTTP / SSE / WebSocket。",
+            "对本地资源发起文件、子进程、git、LSP、MCP、模型 API 调用。",
+          ],
+          edges: ["sidecar-server", "renderer-server", "server-resources"],
+        },
+        db: {
+          title: "SQLite / State / Config",
+          desc: "本地持久化数据、配置、状态都由服务端管理，UI 只通过 API 间接访问。",
+          points: ["桌面启动时可能执行 migration。", "状态和配置路径由 OpenCode core 管理。"],
+          edges: ["server-resources"],
+        },
+        fs: {
+          title: "Workspace Files",
+          desc: "工作区文件读写、搜索、补丁应用等能力都在 server/tool 层执行。",
+          points: ["renderer 不直接读写工作区。", "工具权限和路径边界由服务端控制。"],
+          edges: ["server-resources"],
+        },
+        shell: {
+          title: "Shell / PTY",
+          desc: "命令执行和终端能力由本地 server 拉起子进程，终端双向交互通过 WebSocket 连接 UI。",
+          points: ["普通 shell 命令走服务端工具。", "PTY 需要持续双向流式通信。"],
+          edges: ["server-resources", "renderer-server"],
+        },
+        git: {
+          title: "Git / VCS",
+          desc: "分支、diff、status、apply patch 等 VCS 能力由服务端封装，前端只展示结果和触发动作。",
+          points: ["个人 fork 默认分支是 dev。", "工作区状态通过 API 同步到 UI。"],
+          edges: ["server-resources"],
+        },
+        lsp: {
+          title: "LSP / MCP",
+          desc: "LSP 和 MCP 都是服务端侧能力，通常会连接或启动额外进程，并把资源、工具、状态暴露给会话。",
+          points: ["MCP 工具会进入 Tool Registry。", "LSP 状态通过 server API 暴露。"],
+          edges: ["server-resources"],
+        },
+        model: {
+          title: "Model Provider",
+          desc: "模型 Provider 调用由服务端发起。UI 选择 agent/model，真正的模型请求在 core session 流程里执行。",
+          points: ["支持 OpenAI、Anthropic 等 Provider。", "工具调用循环在 packages/opencode 内完成。"],
+          edges: ["server-resources"],
+        },
+      }
+
+      const steps = [
+        {
+          title: "1. Electron Main 启动",
+          desc: "初始化日志、证书、代理、单实例锁和桌面协议，然后准备启动本地服务。",
+          nodes: ["main"],
+          edges: [],
+        },
+        {
+          title: "2. 选择本地端口",
+          desc: "main 在 127.0.0.1 上找一个可用随机端口，并生成一次性访问密码。",
+          nodes: ["main"],
+          edges: [],
+        },
+        {
+          title: "3. 拉起 Sidecar",
+          desc: "main 使用 utilityProcess.fork(sidecar.js) 启动独立子进程。",
+          nodes: ["main", "sidecar"],
+          edges: ["main-sidecar"],
+        },
+        {
+          title: "4. 发送 start 命令",
+          desc: "main 通过 postMessage 把 hostname、port、password、userDataPath 等参数发给 sidecar。",
+          nodes: ["main", "sidecar"],
+          edges: ["main-sidecar"],
+        },
+        {
+          title: "5. Sidecar 加载 Server",
+          desc: "sidecar import virtual:opencode-server，然后调用 Server.listen()。",
+          nodes: ["sidecar", "server"],
+          edges: ["sidecar-server"],
+        },
+        {
+          title: "6. 本地 Server 监听",
+          desc: "OpenCode Server 在 http://127.0.0.1:<port> 启动 HTTP API、事件流和 WebSocket 能力。",
+          nodes: ["server"],
+          edges: ["sidecar-server"],
+        },
+        {
+          title: "7. 健康检查",
+          desc: "main 请求 /global/health，确认 sidecar server 已可用。",
+          nodes: ["main", "server"],
+          edges: ["main-sidecar", "sidecar-server"],
+        },
+        {
+          title: "8. 创建窗口",
+          desc: "main 创建主窗口，renderer 开始加载 packages/app UI。",
+          nodes: ["main", "renderer"],
+          edges: ["preload-main", "renderer-preload"],
+        },
+        {
+          title: "9. Renderer 等待初始化",
+          desc: "renderer 调用 window.api.awaitInitialization()，通过 Electron IPC 等待 main 返回 server 信息。",
+          nodes: ["renderer", "preload", "main"],
+          edges: ["renderer-preload", "preload-main"],
+        },
+        {
+          title: "10. SDK 连接 Server",
+          desc: "renderer 拿到 url、username、password 后创建 SDK client。",
+          nodes: ["renderer", "server"],
+          edges: ["renderer-server"],
+        },
+        {
+          title: "11. 同步数据和事件",
+          desc: "UI 通过 HTTP 拉取初始数据，通过 SSE/WebSocket 接收持续更新。",
+          nodes: ["renderer", "server"],
+          edges: ["renderer-server"],
+        },
+        {
+          title: "12. 用户开始会话",
+          desc: "用户输入 prompt，server 执行 session、agent、model、tool、skill 等核心流程。",
+          nodes: ["renderer", "server", "model", "fs", "shell"],
+          edges: ["renderer-server", "server-resources"],
+        },
+      ]
+
+      const commRows = [
+        {
+          link: "renderer-preload",
+          ends: "Renderer UI -> Preload",
+          mode: "window.api 函数调用",
+          use: "renderer 只访问 preload 暴露出来的安全能力。",
+        },
+        {
+          link: "preload-main",
+          ends: "Preload -> Electron Main",
+          mode: "Electron IPC: ipcRenderer.invoke/send",
+          use: "文件选择器、窗口控制、菜单命令、拿 sidecar 初始化结果。",
+        },
+        {
+          link: "main-sidecar",
+          ends: "Electron Main -> Sidecar",
+          mode: "utilityProcess postMessage/on('message') + stdout/stderr pipe",
+          use: "启动、停止、ready/error/sqlite migration 进度、日志。",
+        },
+        {
+          link: "renderer-server",
+          ends: "Renderer UI -> OpenCode Server",
+          mode: "HTTP / SSE / WebSocket over 127.0.0.1",
+          use: "主业务链路：session、command、skill、permission、terminal。",
+        },
+        {
+          link: "server-resources",
+          ends: "OpenCode Server -> Local Resources",
+          mode: "文件系统、子进程、stdio、HTTP Provider API",
+          use: "文件读写、shell、git、LSP、MCP、模型调用。",
+        },
+      ]
+
+      const codeSamples = {
+        main: `// packages/desktop/src/main/index.ts
+async function electronMain() {
+  initLogging()
+  setupProxyAndCertificates()
+  ensureSingleInstance()
+
+  const port = await findFreeLoopbackPort()
+  const url = \`http://127.0.0.1:\${port}\`
+  const password = randomUUID()
+
+  const { listener, health } = await spawnLocalServer("127.0.0.1", port, password, {
+    userDataPath: app.getPath("userData"),
+    needsMigration,
+  })
+
+  await health.wait
+
+  registerIpcHandlers({
+    awaitInitialization: () => ({ url, username: "opencode", password }),
+    killSidecar: () => listener.stop(),
+  })
+
+  createMainWindow()
+}`,
+        spawn: `// packages/desktop/src/main/server.ts
+async function spawnLocalServer(hostname, port, password, options) {
+  const child = utilityProcess.fork("sidecar.js", [], {
+    serviceName: "opencode server",
+    stdio: "pipe",
+  })
+
+  child.postMessage({
+    type: "start",
+    hostname,
+    port,
+    password,
+    userDataPath: options.userDataPath,
+    needsMigration: options.needsMigration,
+  })
+
+  await waitUntilChildPostsReady()
+
+  return {
+    listener: {
+      stop: () => child.postMessage({ type: "stop" }),
+    },
+    health: waitForHttpHealth(\`http://\${hostname}:\${port}\`, password),
+  }
+}`,
+        sidecar: `// packages/desktop/src/main/sidecar.ts
+async function start(command) {
+  prepareSidecarEnv(command.password, command.userDataPath)
+
+  const { Server } = await import("virtual:opencode-server")
+
+  listener = await Server.listen({
+    hostname: command.hostname,
+    port: command.port,
+    username: "opencode",
+    password: command.password,
+    cors: ["oc://renderer"],
+  })
+
+  parentPort.postMessage({ type: "ready" })
+}`,
+        preload: `// packages/desktop/src/preload/index.ts
+contextBridge.exposeInMainWorld("api", {
+  awaitInitialization: () => ipcRenderer.invoke("await-initialization"),
+  openDirectoryPicker: (opts) => ipcRenderer.invoke("open-directory-picker", opts),
+  setDefaultServerUrl: (url) => ipcRenderer.invoke("set-default-server-url", url),
+})`,
+        renderer: `// renderer / packages/app side
+async function bootRenderer() {
+  const sidecar = await window.api.awaitInitialization()
+
+  const client = createOpencodeClient({
+    baseUrl: sidecar.url,
+    username: sidecar.username,
+    password: sidecar.password,
+  })
+
+  await client.session.list()
+  subscribeServerEvents()
+}`,
+      }
+
+      let activeStep = 0
+      let timer = null
+
+      function setActiveNode(name) {
+        const info = nodeInfo[name]
+        if (!info) return
+        document.querySelectorAll(".node").forEach((item) => item.classList.remove("active", "related"))
+        document.querySelectorAll(".edge").forEach((item) => item.classList.remove("active"))
+
+        document.querySelector(`[data-node="${name}"]`)?.classList.add("active")
+        for (const edge of info.edges) {
+          document.querySelectorAll(`[data-edge="${edge}"]`).forEach((item) => item.classList.add("active"))
+        }
+
+        document.getElementById("node-title").textContent = info.title
+        document.getElementById("node-desc").textContent = info.desc
+        document.getElementById("node-points").innerHTML = info.points.map((point) => `<li>${point}</li>`).join("")
+      }
+
+      function applyStep(index) {
+        activeStep = (index + steps.length) % steps.length
+        const step = steps[activeStep]
+        document.getElementById("step-title").textContent = step.title
+        document.getElementById("step-desc").textContent = step.desc
+
+        document.querySelectorAll(".step-btn").forEach((btn, i) => btn.classList.toggle("active", i === activeStep))
+        document.querySelectorAll(".node").forEach((item) => item.classList.remove("active", "related"))
+        document.querySelectorAll(".edge").forEach((item) => item.classList.remove("active"))
+
+        for (const node of step.nodes) {
+          document.querySelector(`[data-node="${node}"]`)?.classList.add("active")
+        }
+        for (const edge of step.edges) {
+          document.querySelectorAll(`[data-edge="${edge}"]`).forEach((item) => item.classList.add("active"))
+        }
+      }
+
+      function setActiveLink(link) {
+        document.querySelectorAll(".link-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.link === link))
+        document.querySelectorAll(".edge").forEach((item) => item.classList.toggle("active", item.dataset.edge === link))
+        document.querySelectorAll("#comm-table tr").forEach((row) => row.classList.toggle("active", row.dataset.link === link))
+      }
+
+      function setCode(name) {
+        document.querySelectorAll(".tab-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.code === name))
+        document.getElementById("code-block").textContent = codeSamples[name]
+      }
+
+      function init() {
+        document.querySelectorAll("[data-node]").forEach((node) => {
+          node.addEventListener("click", () => setActiveNode(node.dataset.node))
+        })
+
+        document.getElementById("timeline").innerHTML = steps
+          .map(
+            (step, index) =>
+              `<button class="step-btn ${index === 0 ? "active" : ""}" data-step="${index}">
+                <span class="step-number">${String(index + 1).padStart(2, "0")}</span>
+                ${step.title.replace(/^\d+\. /, "")}
+              </button>`,
+          )
+          .join("")
+        document.querySelectorAll("[data-step]").forEach((btn) => {
+          btn.addEventListener("click", () => applyStep(Number(btn.dataset.step)))
+        })
+
+        document.getElementById("prev-step").addEventListener("click", () => applyStep(activeStep - 1))
+        document.getElementById("next-step").addEventListener("click", () => applyStep(activeStep + 1))
+        document.getElementById("reset-step").addEventListener("click", () => applyStep(0))
+        document.getElementById("play-step").addEventListener("click", (event) => {
+          if (timer) {
+            clearInterval(timer)
+            timer = null
+            event.currentTarget.textContent = "播放"
+            return
+          }
+          event.currentTarget.textContent = "暂停"
+          timer = setInterval(() => applyStep(activeStep + 1), 1600)
+        })
+
+        document.getElementById("comm-table").innerHTML = commRows
+          .map(
+            (row) =>
+              `<tr data-link="${row.link}">
+                <td>${row.ends}</td>
+                <td>${row.mode}</td>
+                <td>${row.use}</td>
+              </tr>`,
+          )
+          .join("")
+        document.querySelectorAll("[data-link]").forEach((btn) => {
+          btn.addEventListener("click", () => setActiveLink(btn.dataset.link))
+        })
+
+        document.querySelectorAll("[data-code]").forEach((btn) => {
+          btn.addEventListener("click", () => setCode(btn.dataset.code))
+        })
+
+        document.querySelectorAll("[data-scroll]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            document.querySelectorAll("[data-scroll]").forEach((item) => item.classList.remove("active"))
+            btn.classList.add("active")
+            document.getElementById(btn.dataset.scroll).scrollIntoView({ behavior: "smooth", block: "start" })
+          })
+        })
+
+        setActiveNode("main")
+        applyStep(0)
+        setActiveLink("renderer-preload")
+        setCode("main")
+      }
+
+      init()
+    </script>
+  </body>
+</html>

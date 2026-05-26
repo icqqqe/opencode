@@ -45,6 +45,7 @@ import { Checkbox } from "./checkbox"
 import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
 import { ImagePreview } from "./image-preview"
+import { Dialog } from "./dialog"
 import { getDirectory as _getDirectory, getFilename } from "@opencode-ai/core/util/path"
 import { checksum } from "@opencode-ai/core/util/encode"
 import { Tooltip } from "./tooltip"
@@ -258,6 +259,18 @@ function createPacedValue(getValue: () => string, live?: () => boolean) {
   return value
 }
 
+function MessageMarkdown(props: Parameters<typeof Markdown>[0]) {
+  const data = useData()
+  const localFileAliases = createMemo(() => collectLocalFilePathAliases(data.store.part, data.directory))
+  return (
+    <Markdown
+      {...props}
+      localFileDirectory={data.directory}
+      localFileAliases={localFileAliases()}
+      openLocalFile={data.openPath}
+    />
+  )
+}
 function PacedMarkdown(props: { text: string; cacheKey: string; streaming: boolean }) {
   const value = createPacedValue(
     () => props.text,
@@ -266,11 +279,173 @@ function PacedMarkdown(props: { text: string; cacheKey: string; streaming: boole
 
   return (
     <Show when={value()}>
-      <Markdown text={value()} cacheKey={props.cacheKey} streaming={props.streaming} />
+      <MessageMarkdown text={value()} cacheKey={props.cacheKey} streaming={props.streaming} />
     </Show>
   )
 }
 
+const localFileCandidatePattern =
+  /[A-Za-z]:[\\/][^\s"'<>|?*]+?\.(?:d\.ts|md|markdown|tsx?|jsx?|mjs|cjs|jsonc?|ya?ml|toml|txt|css|scss|html?|py|rs|go|java|c|cc|cpp|cxx|h|hh|hpp|cs|lua|xml|csv|ini|sh|bash|bat|cmd|ps1)(?::\d+)?/gi
+
+function isAbsoluteProjectPath(path: string) {
+  return /^[A-Za-z]:[\\/]/.test(path) || /^\\\\/.test(path) || path.startsWith("/")
+}
+
+function isExplicitProjectRelativePath(path: string) {
+  return path.startsWith("./") || path.startsWith("../") || path.startsWith(".\\") || path.startsWith("..\\")
+}
+
+function normalizeProjectPathCandidate(path: string) {
+  const trimmed = path
+    .trim()
+    .replace(/^[`'"\u2018\u201C]+/g, "")
+    .replace(/[`'"\u2019\u201D,.;!?\uFF0C\u3002\uFF1B\uFF1A\uFF01\uFF1F\u3001)\]}\uFF09\u3011\u300B]+$/g, "")
+  const line = trimmed.match(/^(.*):\d+(?::\d+)?$/)
+  if (!line) return trimmed
+  if (/^[A-Za-z]$/.test(line[1] ?? "")) return trimmed
+  return line[1] ?? trimmed
+}
+
+function normalizeProjectPathKey(path: string) {
+  return normalizeProjectPathCandidate(path).replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+/g, "/").toLowerCase()
+}
+
+function projectPathAliasKeys(path: string) {
+  const parts = normalizeProjectPathKey(path).split("/").filter(Boolean)
+  return parts.map((_, index) => parts.slice(index).join("/"))
+}
+
+function addProjectPathAlias(aliases: Map<string, string>, value: unknown) {
+  if (typeof value !== "string") return
+  const path = normalizeProjectPathCandidate(value)
+  if (!path || !isAbsoluteProjectPath(path)) return
+
+  for (const key of projectPathAliasKeys(path)) {
+    if (key) aliases.set(key, path)
+  }
+}
+
+function fileUrlPath(url: unknown) {
+  if (typeof url !== "string" || !url.startsWith("file://")) return
+  try {
+    const parsed = new URL(url)
+    return decodeURIComponent(parsed.pathname).replace(/^\/([A-Za-z]:\/)/, "$1")
+  } catch {
+    return
+  }
+}
+
+function addTextPathAliases(aliases: Map<string, string>, text: unknown) {
+  if (typeof text !== "string") return
+  localFileCandidatePattern.lastIndex = 0
+  for (const match of text.matchAll(localFileCandidatePattern)) {
+    addProjectPathAlias(aliases, match[0])
+  }
+}
+
+function collectLocalFilePathAliases(partsByMessage: Record<string, PartType[]> | undefined, directory?: string) {
+  const aliases = new Map<string, string>()
+  if (directory) addProjectPathAlias(aliases, directory)
+
+  for (const parts of Object.values(partsByMessage ?? {})) {
+    for (const part of parts) {
+      if (part.type === "text" || part.type === "reasoning") {
+        addTextPathAliases(aliases, part.text)
+        continue
+      }
+
+      if (part.type === "file") {
+        addProjectPathAlias(
+          aliases,
+          part.source && typeof part.source === "object" && "path" in part.source ? part.source.path : undefined,
+        )
+        addProjectPathAlias(aliases, fileUrlPath(part.url))
+        continue
+      }
+
+      if (part.type !== "tool") continue
+
+      const state = part.state as {
+        input?: Record<string, unknown>
+        metadata?: Record<string, unknown>
+        output?: unknown
+      }
+      const input = state.input ?? {}
+      const metadata = state.metadata ?? {}
+      addProjectPathAlias(aliases, input.filePath)
+      addProjectPathAlias(aliases, input.path)
+      addProjectPathAlias(aliases, metadata.filediff && (metadata.filediff as Record<string, unknown>).file)
+      addTextPathAliases(aliases, state.output)
+
+      const loaded = metadata.loaded
+      if (Array.isArray(loaded)) {
+        for (const path of loaded) addProjectPathAlias(aliases, path)
+      }
+
+      const diagnostics = metadata.diagnostics
+      if (diagnostics && typeof diagnostics === "object") {
+        for (const path of Object.keys(diagnostics)) addProjectPathAlias(aliases, path)
+      }
+
+      const files = metadata.files
+      if (Array.isArray(files)) {
+        for (const file of files) {
+          if (!file || typeof file !== "object") continue
+          const record = file as Record<string, unknown>
+          addProjectPathAlias(aliases, record.filePath)
+          addProjectPathAlias(aliases, record.relativePath)
+          addProjectPathAlias(aliases, record.movePath)
+        }
+      }
+    }
+  }
+
+  return Array.from(new Set(aliases.values()))
+}
+
+function resolveProjectPathAlias(path: string, aliases: string[]) {
+  const wanted = projectPathAliasKeys(path)
+  for (const key of wanted) {
+    const exact = aliases.find((candidate) => projectPathAliasKeys(candidate).includes(key))
+    if (exact) return exact
+  }
+}
+
+function resolveProjectPath(path: string, directory: string | undefined, aliases: string[]) {
+  if (!path) return ""
+  const normalized = normalizeProjectPathCandidate(path)
+  if (isAbsoluteProjectPath(normalized)) return normalized
+  const aliased = resolveProjectPathAlias(normalized, aliases)
+  if (aliased) return aliased
+  if (!isExplicitProjectRelativePath(normalized) || !directory) return ""
+  const separator = directory.includes("\\") ? "\\" : "/"
+  return `${directory.replace(/[\\/]$/, "")}${separator}${normalized.replace(/^\.([\\/])/, "").replace(/^[\\/]/, "")}`
+}
+
+function OpenablePathText(props: { path: string; slot: string; children: JSX.Element }) {
+  const data = useData()
+  const aliases = createMemo(() => collectLocalFilePathAliases(data.store.part, data.directory))
+  const target = () => resolveProjectPath(props.path, data.directory, aliases())
+  const clickable = () => !!data.openPath && !!target()
+  const open = (event: MouseEvent) => {
+    const path = target()
+    if (!data.openPath || !path) return
+    event.preventDefault()
+    event.stopPropagation()
+    void Promise.resolve(data.openPath(path)).catch(() => {})
+  }
+
+  return (
+    <span
+      data-slot={props.slot}
+      data-clickable={clickable() ? "true" : undefined}
+      title={target() || undefined}
+      onClick={open}
+    >
+      {props.children}
+    </span>
+  )
+}
 function relativizeProjectPath(path: string, directory?: string) {
   if (!path) return ""
   if (!directory) return path
@@ -1034,6 +1209,55 @@ export function ContextToolGroup(props: { parts: ToolPart[]; busy?: boolean }) {
   )
 }
 
+type SkillSource = {
+  value: string
+  start: number
+  end: number
+}
+
+type SkillReference = {
+  name: string
+  description?: string
+  content: string
+  source?: SkillSource
+  sources: SkillSource[]
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function parseSkillSource(source: unknown): SkillSource | undefined {
+  if (!isRecord(source)) return
+  if (typeof source.value !== "string") return
+  if (typeof source.start !== "number") return
+  if (typeof source.end !== "number") return
+  return { value: source.value, start: source.start, end: source.end }
+}
+
+function skillReferenceFromMetadata(metadata: unknown): SkillReference | undefined {
+  if (!isRecord(metadata)) return
+  const skill = metadata.opencodeSkill
+  if (!isRecord(skill)) return
+  if (typeof skill.name !== "string") return
+  if (typeof skill.content !== "string") return
+  if (skill.description !== undefined && typeof skill.description !== "string") return
+
+  const source = skill.source
+  const parsedSource = parseSkillSource(source)
+  const sources = Array.isArray(skill.sources)
+    ? skill.sources.map(parseSkillSource).filter((source): source is SkillSource => !!source)
+    : []
+  const parsedSources = sources.length > 0 ? sources : parsedSource ? [parsedSource] : []
+
+  return {
+    name: skill.name,
+    description: skill.description,
+    content: skill.content,
+    source: parsedSources[0],
+    sources: parsedSources,
+  }
+}
 export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[]; actions?: UserActions }) {
   const data = useData()
   const dialog = useDialog()
@@ -1059,6 +1283,37 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
 
   const agents = createMemo(() => (props.parts?.filter((p) => p.type === "agent") as AgentPart[]) ?? [])
 
+  const skillReferences = createMemo(() => {
+    const result = new Map<string, SkillReference>()
+    for (const skill of (props.parts ?? [])
+      .filter((part): part is TextPart => part.type === "text" && !!(part as TextPart).synthetic)
+      .map((part) => skillReferenceFromMetadata(part.metadata))
+      .filter((skill): skill is SkillReference => !!skill)) {
+      const existing = result.get(skill.name)
+      if (!existing) {
+        result.set(skill.name, skill)
+        continue
+      }
+      existing.sources.push(...skill.sources)
+      existing.source = existing.sources[0]
+    }
+    return Array.from(result.values())
+  })
+
+  const openSkillReference = (skill: SkillReference) => {
+    dialog.show(() => (
+      <Dialog title={`$${skill.name}`} size="large" class="w-full max-w-[760px] mx-auto">
+        <div class="flex min-h-0 flex-1 flex-col gap-3 px-6 pb-5">
+          <Show when={skill.description}>
+            <p class="shrink-0 text-14-regular text-text-base">{skill.description}</p>
+          </Show>
+          <pre class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border border-border-weak-base bg-surface-base p-3 text-12-regular text-text-strong">
+            <code>{skill.content}</code>
+          </pre>
+        </div>
+      </Dialog>
+    ))
+  }
   const model = createMemo(() => {
     const providerID = props.message.model?.providerID
     const modelID = props.message.model?.modelID
@@ -1149,8 +1404,27 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
         <>
           <div data-slot="user-message-body">
             <div data-slot="user-message-text">
-              <HighlightedText text={text()} references={inlineFiles()} agents={agents()} />
+              <HighlightedText text={text()} references={inlineFiles()} agents={agents()} skills={skillReferences()} />
             </div>
+            <Show when={skillReferences().length > 0}>
+              <div data-slot="user-message-skills">
+                <For each={skillReferences()}>
+                  {(skill) => (
+                    <button
+                      type="button"
+                      data-slot="user-message-skill"
+                      title={skill.description}
+                      onClick={() => openSkillReference(skill)}
+                    >
+                      <span data-slot="user-message-skill-name">${skill.name}</span>
+                      <Show when={skill.description}>
+                        <span data-slot="user-message-skill-description">{skill.description}</span>
+                      </Show>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
           </div>
           <div data-slot="user-message-copy-wrapper">
             <Show when={metaHead() || metaTail()}>
@@ -1212,19 +1486,27 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
   )
 }
 
-type HighlightSegment = { text: string; type?: "file" | "agent" }
+type HighlightSegment = { text: string; type?: "file" | "agent" | "skill" }
 
-function HighlightedText(props: { text: string; references: FilePart[]; agents: AgentPart[] }) {
+function HighlightedText(props: {
+  text: string
+  references: FilePart[]
+  agents: AgentPart[]
+  skills: SkillReference[]
+}) {
   const segments = createMemo(() => {
     const text = props.text
 
-    const allRefs: { start: number; end: number; type: "file" | "agent" }[] = [
+    const allRefs: { start: number; end: number; type: "file" | "agent" | "skill" }[] = [
       ...props.references
         .filter((r) => r.source?.text?.start !== undefined && r.source?.text?.end !== undefined)
         .map((r) => ({ start: r.source!.text!.start, end: r.source!.text!.end, type: "file" as const })),
       ...props.agents
         .filter((a) => a.source?.start !== undefined && a.source?.end !== undefined)
         .map((a) => ({ start: a.source!.start, end: a.source!.end, type: "agent" as const })),
+      ...props.skills.flatMap((skill) =>
+        skill.sources.map((source) => ({ start: source.start, end: source.end, type: "skill" as const })),
+      ),
     ].sort((a, b) => a.start - b.start)
 
     const result: HighlightSegment[] = []
@@ -1307,7 +1589,7 @@ export const ToolRegistry = {
   render: getTool,
 }
 
-function ToolFileAccordion(props: { path: string; actions?: JSX.Element; children: JSX.Element }) {
+function ToolFileAccordion(props: { path: string; openPath?: string; actions?: JSX.Element; children: JSX.Element }) {
   const value = createMemo(() => props.path || "tool-file")
 
   return (
@@ -1323,12 +1605,12 @@ function ToolFileAccordion(props: { path: string; actions?: JSX.Element; childre
             <div data-slot="apply-patch-trigger-content">
               <div data-slot="apply-patch-file-info">
                 <FileIcon node={{ path: props.path, type: "file" }} />
-                <div data-slot="apply-patch-file-name-container">
+                <OpenablePathText path={props.openPath ?? props.path} slot="apply-patch-file-name-container">
                   <Show when={props.path.includes("/")}>
                     <span data-slot="apply-patch-directory">{`\u202A${getDirectory(props.path)}\u202C`}</span>
                   </Show>
                   <span data-slot="apply-patch-filename">{getFilename(props.path)}</span>
-                </div>
+                </OpenablePathText>
               </div>
               <div data-slot="apply-patch-trigger-actions">
                 {props.actions}
@@ -1526,7 +1808,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     <Show when={text()}>
       <div data-component="text-part" data-timeline-part-id={part().id}>
         <div data-slot="text-part-body">
-          <Show when={streaming()} fallback={<Markdown text={text()} cacheKey={part().id} streaming={false} />}>
+          <Show when={streaming()} fallback={<MessageMarkdown text={text()} cacheKey={part().id} streaming={false} />}>
             <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} />
           </Show>
         </div>
@@ -1569,7 +1851,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   return (
     <Show when={text()}>
       <div data-component="reasoning-part" data-timeline-part-id={part().id}>
-        <Show when={streaming()} fallback={<Markdown text={text()} cacheKey={part().id} streaming={false} />}>
+        <Show when={streaming()} fallback={<MessageMarkdown text={text()} cacheKey={part().id} streaming={false} />}>
           <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} />
         </Show>
       </div>
@@ -1607,7 +1889,10 @@ ToolRegistry.register({
             <div data-component="tool-loaded-file">
               <Icon name="enter" size="small" />
               <span>
-                {i18n.t("ui.tool.loaded")} {relativizeProjectPath(filepath, data.directory)}
+                {i18n.t("ui.tool.loaded")}{" "}
+                <OpenablePathText path={filepath} slot="tool-loaded-file-name">
+                  {relativizeProjectPath(filepath, data.directory)}
+                </OpenablePathText>
               </span>
             </div>
           )}
@@ -1629,7 +1914,7 @@ ToolRegistry.register({
       >
         <Show when={props.output}>
           <div data-component="tool-output" data-scrollable>
-            <Markdown text={props.output!} />
+            <MessageMarkdown text={props.output!} />
           </div>
         </Show>
       </BasicTool>
@@ -1653,7 +1938,7 @@ ToolRegistry.register({
       >
         <Show when={props.output}>
           <div data-component="tool-output" data-scrollable>
-            <Markdown text={props.output!} />
+            <MessageMarkdown text={props.output!} />
           </div>
         </Show>
       </BasicTool>
@@ -1680,7 +1965,7 @@ ToolRegistry.register({
       >
         <Show when={props.output}>
           <div data-component="tool-output" data-scrollable>
-            <Markdown text={props.output!} />
+            <MessageMarkdown text={props.output!} />
           </div>
         </Show>
       </BasicTool>
@@ -1960,7 +2245,9 @@ ToolRegistry.register({
                     <TextShimmer text={i18n.t("ui.messagePart.title.edit")} active={pending()} />
                   </span>
                   <Show when={!pending()}>
-                    <span data-slot="message-part-title-filename">{filename()}</span>
+                    <OpenablePathText path={path()} slot="message-part-title-filename">
+                      {filename()}
+                    </OpenablePathText>
                   </Show>
                 </div>
                 <Show when={!pending() && props.input.filePath?.includes("/")}>
@@ -2021,7 +2308,9 @@ ToolRegistry.register({
                     <TextShimmer text={i18n.t("ui.messagePart.title.write")} active={pending()} />
                   </span>
                   <Show when={!pending()}>
-                    <span data-slot="message-part-title-filename">{filename()}</span>
+                    <OpenablePathText path={path()} slot="message-part-title-filename">
+                      {filename()}
+                    </OpenablePathText>
                   </Show>
                 </div>
                 <Show when={!pending() && props.input.filePath?.includes("/")}>
@@ -2132,12 +2421,12 @@ ToolRegistry.register({
                               <div data-slot="apply-patch-trigger-content">
                                 <div data-slot="apply-patch-file-info">
                                   <FileIcon node={{ path: file.relativePath, type: "file" }} />
-                                  <div data-slot="apply-patch-file-name-container">
+                                  <OpenablePathText path={file.filePath} slot="apply-patch-file-name-container">
                                     <Show when={file.relativePath.includes("/")}>
                                       <span data-slot="apply-patch-directory">{`\u202A${getDirectory(file.relativePath)}\u202C`}</span>
                                     </Show>
                                     <span data-slot="apply-patch-filename">{getFilename(file.relativePath)}</span>
-                                  </div>
+                                  </OpenablePathText>
                                 </div>
                                 <div data-slot="apply-patch-trigger-actions">
                                   <Switch>
@@ -2200,7 +2489,9 @@ ToolRegistry.register({
                       <TextShimmer text={i18n.t("ui.tool.patch")} active={pending()} />
                     </span>
                     <Show when={!pending()}>
-                      <span data-slot="message-part-title-filename">{getFilename(single()!.relativePath)}</span>
+                      <OpenablePathText path={single()!.filePath} slot="message-part-title-filename">
+                        {getFilename(single()!.relativePath)}
+                      </OpenablePathText>
                     </Show>
                   </div>
                   <Show when={!pending() && single()!.relativePath.includes("/")}>
@@ -2219,6 +2510,7 @@ ToolRegistry.register({
           >
             <ToolFileAccordion
               path={single()!.relativePath}
+              openPath={single()!.filePath}
               actions={
                 <Switch>
                   <Match when={single()!.type === "add"}>

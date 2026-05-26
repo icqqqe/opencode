@@ -333,4 +333,65 @@ describe("buildRequestParts", () => {
       expect(filePart.url).toContain("/..")
     }
   })
+  test("deduplicates synthetic skill content for repeated $ skill references", () => {
+    const prompt: Prompt = [
+      { type: "text", content: "use ", start: 0, end: 4 },
+      {
+        type: "skill",
+        name: "planner",
+        description: "Plan carefully",
+        body: "# Planner\nUse this workflow.",
+        content: "$planner",
+        start: 4,
+        end: 12,
+      },
+      { type: "text", content: " then ", start: 12, end: 18 },
+      {
+        type: "skill",
+        name: "planner",
+        description: "Plan carefully",
+        body: "# Planner\nUse this workflow.",
+        content: "$planner",
+        start: 18,
+        end: 26,
+      },
+    ]
+
+    const result = buildRequestParts({
+      prompt,
+      context: [],
+      images: [],
+      text: "use $planner then $planner",
+      messageID: "msg_skill",
+      sessionID: "ses_skill",
+      sessionDirectory: "/repo",
+    })
+
+    const syntheticSkills = result.requestParts.filter(
+      (part) => part.type === "text" && part.synthetic && part.metadata?.opencodeSkill,
+    )
+
+    expect(result.requestParts[0]).toMatchObject({ type: "text", text: "use $planner then $planner" })
+    expect(syntheticSkills).toHaveLength(1)
+    expect(syntheticSkills[0]).toMatchObject({
+      type: "text",
+      synthetic: true,
+      metadata: {
+        opencodeSkill: {
+          name: "planner",
+          description: "Plan carefully",
+          content: "# Planner\nUse this workflow.",
+          source: { value: "$planner", start: 4, end: 12 },
+          sources: [
+            { value: "$planner", start: 4, end: 12 },
+            { value: "$planner", start: 18, end: 26 },
+          ],
+        },
+      },
+    })
+    if (syntheticSkills[0]?.type === "text") {
+      expect(syntheticSkills[0].text).toContain('<skill_content name="planner">')
+      expect(syntheticSkills[0].text).toContain("# Planner")
+    }
+  })
 })

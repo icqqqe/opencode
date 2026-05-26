@@ -17,9 +17,18 @@ export interface SlashCommand {
   source?: "command" | "mcp" | "skill"
 }
 
+export interface SkillCommand {
+  id: string
+  trigger: string
+  title: string
+  description?: string
+  template: string
+}
+
 type PromptPopoverProps = {
-  popover: "at" | "slash" | null
+  popover: "at" | "slash" | "skill" | null
   setSlashPopoverRef: (el: HTMLDivElement) => void
+  setSkillPopoverRef: (el: HTMLDivElement) => void
   atFlat: AtOption[]
   atActive?: string
   atKey: (item: AtOption) => string
@@ -29,6 +38,10 @@ type PromptPopoverProps = {
   slashActive?: string
   setSlashActive: (id: string) => void
   onSlashSelect: (item: SlashCommand) => void
+  skillFlat: SkillCommand[]
+  skillActive?: string
+  setSkillActive: (id: string) => void
+  onSkillSelect: (item: SkillCommand) => void
   commandKeybind: (id: string) => string | undefined
   t: (key: string) => string
 }
@@ -39,6 +52,7 @@ export const PromptPopover: Component<PromptPopoverProps> = (props) => {
       <div
         ref={(el) => {
           if (props.popover === "slash") props.setSlashPopoverRef(el)
+          if (props.popover === "skill") props.setSkillPopoverRef(el)
         }}
         class="absolute inset-x-0 -top-2 -translate-y-full origin-bottom-left max-h-80 min-h-10
                  overflow-auto no-scrollbar flex flex-col p-2 rounded-[12px]
@@ -90,6 +104,36 @@ export const PromptPopover: Component<PromptPopoverProps> = (props) => {
                     </button>
                   )
                 }}
+              </For>
+            </Show>
+          </Match>
+          <Match when={props.popover === "skill"}>
+            <Show
+              when={props.skillFlat.length > 0}
+              fallback={<div class="text-text-weak px-2 py-1">{props.t("prompt.popover.emptyCommands")}</div>}
+            >
+              <For each={props.skillFlat}>
+                {(skill) => (
+                  <button
+                    data-skill-id={skill.id}
+                    classList={{
+                      "w-full flex items-center justify-between gap-4 rounded-md px-2 py-1": true,
+                      "bg-surface-raised-base-hover": props.skillActive === skill.id,
+                    }}
+                    onClick={() => props.onSkillSelect(skill)}
+                    onMouseEnter={() => props.setSkillActive(skill.id)}
+                  >
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="text-14-regular text-text-strong whitespace-nowrap">${skill.trigger}</span>
+                      <Show when={skill.description}>
+                        <span class="text-14-regular text-text-weak truncate">{skill.description}</span>
+                      </Show>
+                    </div>
+                    <span class="text-11-regular text-text-subtle px-1.5 py-0.5 bg-surface-base rounded">
+                      {props.t("prompt.slash.badge.skill")}
+                    </span>
+                  </button>
+                )}
               </For>
             </Show>
           </Match>

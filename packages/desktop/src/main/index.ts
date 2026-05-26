@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { EventEmitter } from "node:events"
 import { existsSync, mkdirSync, rmSync } from "node:fs"
-import * as http from "node:http"
 import { createServer } from "node:net"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
@@ -27,6 +26,7 @@ import {
   spawnLocalServer,
   type SidecarListener,
 } from "./server"
+import { prepareProxyEnvironment, useEnvProxy } from "./proxy"
 import {
   createLoadingWindow,
   createMainWindow,
@@ -61,15 +61,6 @@ let initStep: InitStep = { phase: "server_waiting" }
 
 const pendingDeepLinks: string[] = []
 
-function useEnvProxy() {
-  try {
-    // Electron 41.2 runs Node 24.14.1; latest @types/node@24 is 24.12.2.
-    ;(http as any).setGlobalProxyFromEnv()
-  } catch (error) {
-    logger.warn("failed to load proxy environment", error)
-  }
-}
-
 function emitDeepLinks(urls: string[]) {
   if (urls.length === 0) return
   pendingDeepLinks.push(...urls)
@@ -87,26 +78,6 @@ async function killSidecar() {
   const current = server
   server = null
   await current.stop()
-}
-
-function ensureLoopbackNoProxy() {
-  const loopback = ["127.0.0.1", "localhost", "::1"]
-  const upsert = (key: string) => {
-    const items = (process.env[key] ?? "")
-      .split(",")
-      .map((value: string) => value.trim())
-      .filter((value: string) => Boolean(value))
-
-    for (const host of loopback) {
-      if (items.some((value: string) => value.toLowerCase() === host)) continue
-      items.push(host)
-    }
-
-    process.env[key] = items.join(",")
-  }
-
-  upsert("NO_PROXY")
-  upsert("no_proxy")
 }
 
 const main = Effect.gen(function* () {
@@ -157,8 +128,8 @@ const main = Effect.gen(function* () {
     onboardingTest: Boolean(onboardingTestRoot),
   })
 
-  ensureLoopbackNoProxy()
-  useEnvProxy()
+  prepareProxyEnvironment()
+  useEnvProxy((error) => logger.warn("failed to load proxy environment", error))
   app.commandLine.appendSwitch("proxy-bypass-list", "<-loopback>")
   const features = app.commandLine.getSwitchValue("enable-features")
   app.commandLine.appendSwitch("enable-features", features ? `${jsCallStackFeature},${features}` : jsCallStackFeature)
@@ -320,8 +291,8 @@ const main = Effect.gen(function* () {
       if (mainWindow) sendSqliteMigrationProgress(mainWindow, progress)
     })
 
-    ensureLoopbackNoProxy()
-    useEnvProxy()
+    prepareProxyEnvironment()
+    useEnvProxy((error) => logger.warn("failed to load proxy environment", error))
 
     logger.log("spawning sidecar", { url })
     const { listener, health } = yield* Effect.promise(() =>

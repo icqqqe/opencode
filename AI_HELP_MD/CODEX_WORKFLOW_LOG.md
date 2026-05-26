@@ -133,3 +133,41 @@ P4 类比：`origin` 是用户自己的远端 depot，`upstream` 是官方 depot
 - 后续 `AI_HELP_MD/skills/` 下创建的所有 repo 同步 skill，都采用 `AI_HELP_MD/skills/<skill-name>` 与 `%USERPROFILE%\.codex\skills\<skill-name>` 双份维护。
 - 后续创建或修改这些 skill 时，两边的 `SKILL.md` 和 `agents/openai.yaml` 必须同步更新。
 - 新机器从 GitHub 拉取后，如需启用仓库内 skill，将对应 `AI_HELP_MD/skills/<skill-name>` 目录复制到 `%USERPROFILE%\.codex\skills\<skill-name>`。
+
+## 2026-05-26 Windows 桌面端系统代理修复
+
+用户反馈 OpenCode 会话中出现 `Transport error`、`UND_ERR_CONNECT_TIMEOUT`，日志显示 `https://opencode.ai/zen/v1/chat/completions` 等请求在中国大陆网络环境下直连超时。
+
+定位结论：
+
+- 用户本机 Windows 系统代理已开启，WinINet `ProxyServer` 为 `127.0.0.1:7890`。
+- WinHTTP 仍为直连。
+- OpenCode 桌面端原先只调用 `setGlobalProxyFromEnv()`，该逻辑只读取环境变量，不读取 Windows 系统代理注册表。
+- sidecar 内的 Node fetch / undici 还需要 `NODE_USE_ENV_PROXY=1` 才能稳定消费代理环境变量。
+
+已实现：
+
+- 新增 `packages/desktop/src/main/proxy.ts`，统一处理桌面端代理初始化。
+- Windows 下读取 `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings` 的 `ProxyEnable`、`ProxyServer`、`ProxyOverride`。
+- 将系统 HTTP/HTTPS 代理映射到 `HTTP_PROXY`、`http_proxy`、`HTTPS_PROXY`、`https_proxy`。
+- 系统代理关闭时，只清理 OpenCode 自动托管的代理环境，不删除用户手动设置的代理变量。
+- 合并系统代理排除列表与本地回环地址到 `NO_PROXY` / `no_proxy`。
+- 检测到代理环境时设置 `NODE_USE_ENV_PROXY=1`，让 sidecar 中 Node fetch/undici 真正走代理。
+- main process 和 sidecar 都接入 `prepareProxyEnvironment()` 与 `useEnvProxy(...)`。
+
+限制：
+
+- 不写死 Clash；Clash Verge、v2rayN、sing-box GUI、企业代理等只要写入 Windows 系统 HTTP/HTTPS 代理即可生效。
+- 不解析 PAC / AutoConfigURL。
+- 不支持 SOCKS-only 系统代理自动导入，避免误把 SOCKS 代理当 HTTP 代理使用。
+
+详细记录：
+
+- `AI_HELP_MD/HANDOFF_2026-05-26_DESKTOP_SYSTEM_PROXY_FIX.md`
+
+验证：
+
+- 当前系统代理 `127.0.0.1:7890` 可被正确映射为 `http://127.0.0.1:7890`。
+- `socks=127.0.0.1:7891` 单独配置会被忽略，避免错误代理。
+- `packages/desktop` 下 `bun run build` 通过。
+- `packages/desktop` 下 `bun typecheck` 仍被既有 Windows symlink 问题挡住，不是本次改动引入。

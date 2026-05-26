@@ -22,6 +22,7 @@
 | `CODEX_WORKFLOW_LOG.md` | 当前会话和后续会话的长期工作记录 | Handoff、开发指南 |
 | `HANDOFF_2026-05-25_OPENCODE_WINDOWS_CLIENT_INIT.md` | 初始化阶段交接记录 | 工作流日志、开发指南 |
 | `HANDOFF_2026-05-25_NEXT_THREAD_DEVELOPMENT.md` | 下一线程开发交接入口 | `AGENTS.md`、开发指南、根目录配置 |
+| `HANDOFF_2026-05-26_DESKTOP_SYSTEM_PROXY_FIX.md` | Windows 桌面端读取系统代理并传给 sidecar 的修复记录 | `packages/desktop/src/main/proxy.ts`、工作流日志 |
 | `skills/` | 随 GitHub 同步的 Codex skill 仓库副本目录 | `%USERPROFILE%\.codex\skills` 安装副本 |
 
 ## 后续维护规则

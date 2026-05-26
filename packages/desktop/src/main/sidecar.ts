@@ -1,10 +1,6 @@
 import { drizzle } from "drizzle-orm/node-sqlite/driver"
-import * as http from "node:http"
 import * as tls from "node:tls"
-
-type NodeHttpWithEnvProxy = typeof http & {
-  setGlobalProxyFromEnv: () => void
-}
+import { prepareProxyEnvironment, useEnvProxy } from "./proxy"
 
 type NodeTlsWithSystemCertificates = typeof tls & {
   getCACertificates: (type: "default" | "system") => string[]
@@ -54,9 +50,9 @@ parentPort.on("message", (event) => {
 async function start(command: StartCommand) {
   try {
     prepareSidecarEnv(command.password, command.userDataPath)
-    ensureLoopbackNoProxy()
+    prepareProxyEnvironment()
     useSystemCertificates()
-    useEnvProxy()
+    useEnvProxy((error) => console.warn("failed to load proxy environment", error))
     const { Database, JsonMigration, Log, Server } = await import("virtual:opencode-server")
     await Log.init({ level: "WARN" })
 
@@ -107,26 +103,6 @@ function prepareSidecarEnv(password: string, userDataPath: string) {
   })
 }
 
-function ensureLoopbackNoProxy() {
-  const loopback = ["127.0.0.1", "localhost", "::1"]
-  const upsert = (key: string) => {
-    const items = (process.env[key] ?? "")
-      .split(",")
-      .map((value: string) => value.trim())
-      .filter((value: string) => Boolean(value))
-
-    for (const host of loopback) {
-      if (items.some((value: string) => value.toLowerCase() === host)) continue
-      items.push(host)
-    }
-
-    process.env[key] = items.join(",")
-  }
-
-  upsert("NO_PROXY")
-  upsert("no_proxy")
-}
-
 function useSystemCertificates() {
   try {
     const nodeTls = tls as NodeTlsWithSystemCertificates
@@ -135,14 +111,6 @@ function useSystemCertificates() {
     ])
   } catch (error) {
     console.warn("failed to load system certificates", error)
-  }
-}
-
-function useEnvProxy() {
-  try {
-    ;(http as NodeHttpWithEnvProxy).setGlobalProxyFromEnv()
-  } catch (error) {
-    console.warn("failed to load proxy environment", error)
   }
 }
 

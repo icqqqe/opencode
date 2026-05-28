@@ -4,8 +4,14 @@ import {
   type AuthenticateResponse,
   type AuthMethod,
   type CancelNotification,
+  type CloseSessionRequest,
+  type CloseSessionResponse,
+  type ForkSessionRequest,
+  type ForkSessionResponse,
   type InitializeRequest,
   type InitializeResponse,
+  type ListSessionsRequest,
+  type ListSessionsResponse,
   type LoadSessionRequest,
   type LoadSessionResponse,
   type McpServer,
@@ -13,6 +19,9 @@ import {
   type NewSessionResponse,
   type PromptRequest,
   type PromptResponse,
+  type ResumeSessionRequest,
+  type ResumeSessionResponse,
+  type SessionInfo,
   type SetSessionConfigOptionRequest,
   type SetSessionConfigOptionResponse,
   type SetSessionModelRequest,
@@ -21,25 +30,36 @@ import {
   type SetSessionModeResponse,
 } from "@agentclientprotocol/sdk"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
-import type { OpencodeClient } from "@opencode-ai/sdk/v2"
+import * as Log from "@opencode-ai/core/util/log"
+import type { Message, OpencodeClient, SessionMessageResponse } from "@opencode-ai/sdk/v2"
 import { Context, Effect, Layer, ManagedRuntime } from "effect"
 import * as ACPNextError from "./error"
 import { buildConfigOptions, parseModelSelection } from "./config-option"
+import { promptContentToParts } from "./content"
 import { Directory } from "./directory"
+import { ACPNextEvent } from "./event"
 import { ACPNextSession } from "./session"
+import { UsageService } from "./usage"
 import { ModelID, ProviderID } from "@/provider/schema"
 import { Provider } from "@/provider/provider"
 import type { Command } from "@/command"
 
 export const AuthMethodID = "opencode-login"
+const log = Log.create({ service: "acp-next-service" })
 
 export type Error = ACPNextError.Error
+type ServiceConnection = Pick<AgentSideConnection, "sessionUpdate"> &
+  Partial<Pick<AgentSideConnection, "requestPermission" | "writeTextFile">>
 
 export type Interface = {
   readonly initialize: (input: InitializeRequest) => Effect.Effect<InitializeResponse, Error>
   readonly authenticate: (input: AuthenticateRequest) => Effect.Effect<AuthenticateResponse, Error>
   readonly newSession: (input: NewSessionRequest) => Effect.Effect<NewSessionResponse, Error>
   readonly loadSession: (input: LoadSessionRequest) => Effect.Effect<LoadSessionResponse, Error>
+  readonly listSessions: (input: ListSessionsRequest) => Effect.Effect<ListSessionsResponse, Error>
+  readonly resumeSession: (input: ResumeSessionRequest) => Effect.Effect<ResumeSessionResponse, Error>
+  readonly closeSession: (input: CloseSessionRequest) => Effect.Effect<CloseSessionResponse, Error>
+  readonly forkSession: (input: ForkSessionRequest) => Effect.Effect<ForkSessionResponse, Error>
   readonly setSessionConfigOption: (
     input: SetSessionConfigOptionRequest,
   ) => Effect.Effect<SetSessionConfigOptionResponse, Error>
@@ -53,13 +73,19 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/AC
 
 export function make(input: {
   sdk: OpencodeClient
-  connection?: Pick<AgentSideConnection, "sessionUpdate">
+  connection?: ServiceConnection
   directory?: Directory.Interface
   session?: ACPNextSession.Interface
+  usage?: UsageService.Interface
+  eventSubscription?: (subscription: ACPNextEvent.Subscription) => void
 }): Interface {
   const session = input.session ?? makeSessionService()
   const directoryService = input.directory ?? makeDirectoryService(input.sdk)
   const registeredMcp = new Map<string, Set<string>>()
+  const events = input.connection
+    ? ACPNextEvent.start({ sdk: input.sdk, connection: input.connection, session })
+    : undefined
+  if (events) input.eventSubscription?.(events)
 
   const initialize = Effect.fn("ACPNext.initialize")(function* (params: InitializeRequest) {
     const authMethod: AuthMethod = {
@@ -89,6 +115,12 @@ export function make(input: {
         promptCapabilities: {
           embeddedContext: true,
           image: true,
+        },
+        sessionCapabilities: {
+          close: {},
+          fork: {},
+          list: {},
+          resume: {},
         },
       },
       authMethods: [authMethod],
@@ -180,6 +212,137 @@ export function make(input: {
 
     yield* registerMcpServers(input.sdk, registeredMcp, params.cwd, state.id, params.mcpServers)
     yield* sendAvailableCommands(input.connection, state.id, snapshot)
+    yield* replayMessages(events, messages)
+
+    return {
+      configOptions: configOptions(snapshot, {
+        model: state.model ?? model,
+        variant: state.variant,
+        modeId: state.modeId,
+      }),
+    }
+  })
+
+  const listSessions = Effect.fn("ACPNext.listSessions")(function* (params: ListSessionsRequest) {
+    const cursor = params.cursor ? Number(params.cursor) : undefined
+    const limit = 100
+    const sessions = yield* request(
+      () =>
+        input.sdk.session.list(
+          {
+            ...(params.cwd ? { directory: params.cwd } : {}),
+            roots: true,
+          },
+          { throwOnError: true },
+        ),
+      "session",
+    )
+    const sorted = sessions.toSorted((a, b) => b.time.updated - a.time.updated)
+    const filtered =
+      cursor === undefined || !Number.isFinite(cursor) ? sorted : sorted.filter((item) => item.time.updated < cursor)
+    const page = filtered.slice(0, limit)
+    const last = page.at(-1)
+    return {
+      sessions: page.map(
+        (item): SessionInfo => ({
+          sessionId: item.id,
+          cwd: item.directory,
+          title: item.title,
+          updatedAt: new Date(item.time.updated).toISOString(),
+        }),
+      ),
+      ...(filtered.length > limit && last ? { nextCursor: String(last.time.updated) } : {}),
+    }
+  })
+
+  const resumeSession = Effect.fn("ACPNext.resumeSession")(function* (params: ResumeSessionRequest) {
+    const snapshot = yield* directorySnapshot(params.cwd)
+    yield* request(
+      () => input.sdk.session.get({ directory: params.cwd, sessionID: params.sessionId }, { throwOnError: true }),
+      "session",
+    )
+    const messages = yield* request(
+      () =>
+        input.sdk.session.messages(
+          { directory: params.cwd, sessionID: params.sessionId, limit: 20 },
+          { throwOnError: true },
+        ),
+      "session",
+    )
+    const restored = restoreFromMessages(messages.map((item) => item.info))
+    const model = restored.model ?? selectDefaultModel(snapshot)
+    const state = yield* session.load({
+      id: params.sessionId,
+      cwd: params.cwd,
+      mcpServers: params.mcpServers ?? [],
+      model,
+      variant: restored.variant ?? selectVariant(snapshot, model),
+      modeId: restored.modeId ?? (snapshot.availableModes.length > 0 ? snapshot.defaultModeID : undefined),
+    })
+
+    yield* registerMcpServers(input.sdk, registeredMcp, params.cwd, state.id, params.mcpServers ?? [])
+    yield* sendAvailableCommands(input.connection, state.id, snapshot)
+    yield* replayMessages(events, messages)
+
+    return {
+      configOptions: configOptions(snapshot, {
+        model: state.model ?? model,
+        variant: state.variant,
+        modeId: state.modeId,
+      }),
+    }
+  })
+
+  const closeSession = Effect.fn("ACPNext.closeSession")(function* (params: CloseSessionRequest) {
+    const removed = yield* session.remove(params.sessionId)
+    registeredMcp.delete(params.sessionId)
+    if (!removed) return {}
+
+    yield* request(
+      () => input.sdk.session.abort({ directory: removed.cwd, sessionID: params.sessionId }, { throwOnError: true }),
+      "session",
+    ).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          log.error("failed to abort session while closing ACP session", { error, sessionID: params.sessionId })
+        }),
+      ),
+    )
+    return {}
+  })
+
+  const forkSession = Effect.fn("ACPNext.forkSession")(function* (params: ForkSessionRequest) {
+    const snapshot = yield* directorySnapshot(params.cwd)
+    const forked = yield* request(
+      () =>
+        input.sdk.session.fork(
+          {
+            directory: params.cwd,
+            sessionID: params.sessionId,
+          },
+          { throwOnError: true },
+        ),
+      "session",
+    )
+    const messages = yield* request(
+      () =>
+        input.sdk.session.messages({ directory: params.cwd, sessionID: forked.id, limit: 20 }, { throwOnError: true }),
+      "session",
+    )
+    const restored = restoreFromMessages(messages.map((item) => item.info))
+    const model = restored.model ?? selectDefaultModel(snapshot)
+    const state = yield* session.load({
+      id: forked.id,
+      cwd: params.cwd,
+      mcpServers: params.mcpServers ?? [],
+      model,
+      variant: restored.variant ?? selectVariant(snapshot, model),
+      modeId: restored.modeId ?? (snapshot.availableModes.length > 0 ? snapshot.defaultModeID : undefined),
+    })
+
+    yield* registerMcpServers(input.sdk, registeredMcp, params.cwd, state.id, params.mcpServers ?? [])
+    yield* sendAvailableCommands(input.connection, state.id, snapshot)
+    yield* replayMessages(events, messages)
 
     return {
       sessionId: state.id,
@@ -278,11 +441,88 @@ export function make(input: {
     authenticate,
     newSession,
     loadSession,
+    listSessions,
+    resumeSession,
+    closeSession,
+    forkSession,
     setSessionConfigOption,
     setSessionMode,
     setSessionModel,
-    prompt: Effect.fn("ACPNext.prompt")(function* (_input: PromptRequest) {
-      return yield* new ACPNextError.UnsupportedOperationError({ method: "session/prompt" })
+    prompt: Effect.fn("ACPNext.prompt")(function* (params: PromptRequest) {
+      const current = yield* session.get(params.sessionId)
+      const snapshot = yield* directorySnapshot(current.cwd)
+      const selected = current.model ?? selectDefaultModel(snapshot)
+      if (!current.model) {
+        yield* session.setModel(params.sessionId, selected)
+      }
+      const variant = current.variant ?? selectVariant(snapshot, selected)
+      const modeId = current.modeId ?? (snapshot.availableModes.length > 0 ? snapshot.defaultModeID : undefined)
+      const parts = promptContentToParts(params.prompt)
+      const command = detectSlashCommand(parts)
+
+      if (!command) {
+        const response = yield* request(
+          () =>
+            input.sdk.session.prompt(
+              {
+                sessionID: current.id,
+                model: {
+                  providerID: selected.providerID,
+                  modelID: selected.modelID,
+                },
+                ...(variant ? { variant } : {}),
+                parts,
+                ...(modeId ? { agent: modeId } : {}),
+                directory: current.cwd,
+              },
+              { throwOnError: true },
+            ),
+          "session",
+        )
+        yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
+        return promptResponse(response.info, params.messageId)
+      }
+
+      const known = snapshot.availableCommands.find((item) => item.name === command.name)
+      if (known) {
+        const response = yield* request(
+          () =>
+            input.sdk.session.command(
+              {
+                sessionID: current.id,
+                command: known.name,
+                arguments: command.args,
+                model: `${selected.providerID}/${selected.modelID}`,
+                ...(variant ? { variant } : {}),
+                ...(modeId ? { agent: modeId } : {}),
+                directory: current.cwd,
+              },
+              { throwOnError: true },
+            ),
+          "session",
+        )
+        yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
+        return promptResponse(response.info, params.messageId)
+      }
+
+      if (command.name === "compact") {
+        yield* request(
+          () =>
+            input.sdk.session.summarize(
+              {
+                sessionID: current.id,
+                directory: current.cwd,
+                providerID: selected.providerID,
+                modelID: selected.modelID,
+              },
+              { throwOnError: true },
+            ),
+          "session",
+        )
+      }
+
+      yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
+      return promptResponse(undefined, params.messageId)
     }),
     cancel: Effect.fn("ACPNext.cancel")(function* (_input: CancelNotification) {
       return yield* new ACPNextError.UnsupportedOperationError({ method: "session/cancel" })
@@ -311,6 +551,102 @@ function makeDirectoryService(sdk: OpencodeClient) {
   ).runSync(Directory.Service.use((service) => Effect.succeed(service)))
 }
 
+function makeUsageService(sdk: OpencodeClient) {
+  const limits = new Map<string, Promise<number | undefined>>()
+  const contextLimit: UsageService.Interface["contextLimit"] = Effect.fn("ACPNext.promptUsage.contextLimit")(
+    function* (params) {
+      const key = `${params.directory}\u0000${params.providerID}\u0000${params.modelID}`
+      const current = limits.get(key)
+      if (current) return yield* Effect.promise(() => current)
+
+      const next = sdk.config
+        .providers({ directory: params.directory }, { throwOnError: true })
+        .then((response) => {
+          const providers = Object.fromEntries(
+            (response.data?.providers ?? []).map((provider) => [provider.id, provider]),
+          ) as Record<ProviderID, Provider.Info>
+          return UsageService.findContextLimit(providers, params.providerID, params.modelID)
+        })
+        .catch((error: unknown) => {
+          log.error("failed to get providers for usage context limit", { error })
+          return undefined
+        })
+      limits.set(key, next)
+      return yield* Effect.promise(() => next)
+    },
+  )
+
+  const sendUpdate: UsageService.Interface["sendUpdate"] = Effect.fn("ACPNext.promptUsage.sendUpdate")(
+    function* (params) {
+      const messages = yield* request(
+        () =>
+          sdk.session.messages(
+            {
+              sessionID: params.sessionID,
+              directory: params.directory,
+            },
+            { throwOnError: true },
+          ),
+        "session",
+      ).pipe(
+        Effect.map((messages) => messages as readonly UsageService.SessionMessage[]),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            log.error("failed to fetch messages for usage update", { error })
+            return undefined
+          }),
+        ),
+      )
+      if (!messages) return
+
+      const message = UsageService.latestAssistantMessage(messages)
+      if (!message?.providerID || !message.modelID) return
+
+      const size = yield* contextLimit({
+        directory: params.directory,
+        providerID: ProviderID.make(message.providerID),
+        modelID: ModelID.make(message.modelID),
+      })
+      if (!size) return
+
+      yield* Effect.promise(() =>
+        params.connection
+          .sessionUpdate({
+            sessionId: params.sessionID,
+            update: {
+              sessionUpdate: "usage_update",
+              used: message.tokens.input + message.tokens.cache.read,
+              size,
+              cost: { amount: UsageService.totalSessionCost(messages), currency: "USD" },
+            },
+          })
+          .catch((error) => {
+            log.error("failed to send usage update", { error })
+          }),
+      )
+    },
+  )
+
+  return UsageService.Service.of({
+    buildUsage: UsageService.buildUsage,
+    latestAssistantMessage: UsageService.latestAssistantMessage,
+    totalSessionCost: UsageService.totalSessionCost,
+    contextLimit,
+    sendUpdate,
+  })
+}
+
+function replayMessages(subscription: ACPNextEvent.Subscription | undefined, messages: SessionMessageResponse[]) {
+  if (!subscription) return Effect.void
+  return Effect.promise(async () => {
+    for (const message of messages) {
+      await subscription.replayMessage(message).catch((error: unknown) => {
+        log.error("failed to replay ACP message", { error, messageID: message.info.id })
+      })
+    }
+  })
+}
+
 type ConfigState = {
   readonly model: Directory.DefaultModel
   readonly variant?: string
@@ -323,18 +659,16 @@ type SdkResponse<T> = {
 }
 
 type MessageInfo = {
-  readonly role?: string
-  readonly model?: {
-    readonly providerID?: string
-    readonly modelID?: string
-    readonly variant?: string
-  }
-  readonly providerID?: string
-  readonly modelID?: string
-  readonly variant?: string
-  readonly mode?: string
-  readonly agent?: string
+  readonly role?: Message["role"]
+  readonly model?: Extract<Message, { role: "user" }>["model"]
+  readonly providerID?: Extract<Message, { role: "assistant" }>["providerID"]
+  readonly modelID?: Extract<Message, { role: "assistant" }>["modelID"]
+  readonly variant?: Extract<Message, { role: "assistant" }>["variant"]
+  readonly mode?: Extract<Message, { role: "assistant" }>["mode"]
+  readonly agent?: Message["agent"]
 }
+
+type AssistantInfo = UsageService.AssistantTokenCost | undefined
 
 function request<T>(fn: () => Promise<T | SdkResponse<T>>, service?: string) {
   return Effect.tryPromise({
@@ -448,6 +782,43 @@ function selectDefaultModel(snapshot: Directory.Snapshot) {
   const model = snapshot.modelOptions[0]
   if (model) return { providerID: model.providerID, modelID: model.modelID }
   return { providerID: "unknown" as ProviderID, modelID: "unknown" as ModelID }
+}
+
+function detectSlashCommand(parts: ReturnType<typeof promptContentToParts>) {
+  const text = parts
+    .filter((part): part is Extract<(typeof parts)[number], { type: "text" }> => part.type === "text")
+    .map((part) => part.text)
+    .join("")
+    .trim()
+  if (!text.startsWith("/")) return
+
+  const [name, ...rest] = text.slice(1).split(/\s+/)
+  if (!name) return
+  return { name, args: rest.join(" ").trim() }
+}
+
+function promptResponse(info: AssistantInfo, messageId: string | null | undefined): PromptResponse {
+  return {
+    stopReason: "end_turn",
+    ...(info ? { usage: UsageService.buildUsage(info) } : {}),
+    ...(messageId ? { userMessageId: messageId } : {}),
+    _meta: {},
+  }
+}
+
+function sendUsageUpdate(
+  usage: UsageService.Interface | undefined,
+  sdk: OpencodeClient,
+  connection: ServiceConnection | undefined,
+  sessionID: string,
+  directory: string,
+) {
+  if (!connection) return Effect.void
+  return (usage ?? makeUsageService(sdk)).sendUpdate({
+    connection,
+    sessionID,
+    directory,
+  })
 }
 
 function selectVariant(snapshot: Directory.Snapshot, model: Directory.DefaultModel) {

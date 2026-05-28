@@ -9,6 +9,39 @@
 - 只记录事实和工程判断，不记录账号、token、私钥等敏感信息。
 - 本文件只做追踪记录，不代表已经提交到 Git 或推送到 GitHub。
 
+## 2026-05-28 14:30:34 +08:00 - 合并官方 dev 时处理 PromptInput 冲突
+
+### 背景
+
+用户已在 GitHub 网页把官方最新代码合入个人 `dev` 分支，随后本地将 `origin/dev` 合入 `work/windows-client-ui` 时，`packages/app/src/components/prompt-input.tsx` 与本地 `$ skill` 二开功能发生内容冲突。
+
+### 修改原则
+
+- 保留本地 `$ skill` 功能：`$` 触发 skill 列表、正文插入 skill pill、skill pill 高亮、点击 skill pill 查看完整内容 Dialog。
+- 接入官方最新输入框结构：`settings.general.newLayoutDesigns()`、project picker、`ComposerModelControl`、`ComposerAgentControl`、新建 project 入口、官方新的拖拽/上下文/图片附件布局。
+- 不恢复旧的 `MAIN_WORKTREE` / `CREATE_WORKTREE` 新会话 worktree 下拉逻辑，采用官方最新 project picker 流程。
+- 只处理 merge 冲突和记录，不扩展新的交互行为。
+
+### 涉及文件与修改内容
+
+- `packages/app/src/components/prompt-input.tsx`
+  - 同时保留 `skillPopoverRef` 与官方新增的 `projectSearchRef`。
+  - 保留 placeholder 文案 `Ask anything, / for commands, $ for skills, @ for context...`。
+  - 在官方新版 composer JSX 结构中保留 `PromptPopover` 的 skill props、`[data-type=skill]` 高亮 class 和 skill pill 点击 Dialog 行为。
+  - 采用官方新版 project picker / composer state 逻辑，兼容 `origin/dev` 中的 session project 切换流程。
+
+- `AI_HELP_MD/CODEX_OPENCODE_WINDOWS_CLIENT_CHANGELOG.md`
+  - 追加本次 merge 冲突处理记录，方便后续继续维护 Windows UI 二开分支时追踪。
+
+### 验证结果
+
+- `packages/app/src/components/prompt-input.tsx` 已无标准 Git 冲突标记。
+- `git diff --check` 针对本次手动处理的两个文件通过，仅有 Git 在 Windows 下提示未来可能做 LF/CRLF 转换。
+
+### 已知问题
+
+- 本仓库当前 Windows 环境仍可能因为 `@typescript/native-preview-win32-x64` 可选平台包入口或官方 symlink checkout 问题导致 pre-push/typecheck 失败；该问题不是本次 PromptInput 冲突处理新增。
+
 ## 2026-05-26 11:00:54 +08:00 - `$` skill 调用、skill 去重、文件点击打开
 
 ### 背景

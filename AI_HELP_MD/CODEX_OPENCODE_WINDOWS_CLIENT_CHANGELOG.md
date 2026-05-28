@@ -9,6 +9,36 @@
 - 只记录事实和工程判断，不记录账号、token、私钥等敏感信息。
 - 本文件只做追踪记录，不代表已经提交到 Git 或推送到 GitHub。
 
+## 2026-05-28 15:38:00 +08:00 - 增加 AGENTS 自动发现开关
+
+### 背景
+
+用户在非 Git 管理的公司工作区 `E:\workspace\game\ts_workspace` 使用 OpenCode，当前工作目录已经是 `ts_workspace`，但 OpenCode 默认 AGENTS 自动发现会继续向上查找到 `E:\workspace\game\AGENTS.md`。用户希望在 `opencode.json` 中显式关闭默认自动寻找 `AGENTS.md` 的机制，关闭后只以 `instructions` 配置为准。
+
+### 涉及文件与修改内容
+
+- `packages/opencode/src/config/config.ts`
+  - 新增配置字段 `autodiscover_instructions?: boolean`。
+  - 未配置时默认保持现状。
+  - 配置为 `false` 时关闭自动发现 `AGENTS.md / CLAUDE.md / CONTEXT.md`。
+
+- `packages/opencode/src/session/instruction.ts`
+  - `systemPaths()` 在 `autodiscover_instructions === false` 时跳过全局和项目级默认 instruction 文件自动发现。
+  - `resolve()` 在 `autodiscover_instructions === false` 时不再通过 read 工具自动补充邻近目录的 `AGENTS.md`。
+  - 显式配置的 `instructions` 仍正常加载。
+
+- `packages/opencode/test/session/instruction.test.ts`
+  - 新增单测覆盖关闭后不加载项目/全局 `AGENTS.md`。
+  - 新增单测覆盖关闭后 read 工具不再补充邻近 `AGENTS.md`。
+  - 新增单测覆盖关闭后仍加载显式 `instructions`。
+
+### 验证结果
+
+- `packages/opencode`: `bun test test/session/instruction.test.ts`
+  - 12 pass，1 todo。
+- `packages/opencode`: `bun run typecheck`
+  - 通过。
+
 ## 2026-05-28 15:03:29 +08:00 - 修复 Markdown 隐式相对路径误点击
 
 ### 背景

@@ -110,23 +110,26 @@ export const layer: Layer.Layer<
       const config = yield* cfg.get()
       const ctx = yield* InstanceState.context
       const paths = new Set<string>()
+      const autodiscover = config.autodiscover_instructions !== false
 
-      for (const file of globalFiles) {
-        if (yield* fs.existsSafe(file)) {
-          paths.add(path.resolve(file))
-          break
-        }
-      }
-
-      // The first project-level match wins so we don't stack AGENTS.md/CLAUDE.md from every ancestor.
-      if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
-        for (const file of instructionFiles) {
-          const matches = yield* fs
-            .findUp(file, ctx.directory, ctx.worktree)
-            .pipe(Effect.catch(() => Effect.succeed([])))
-          if (matches.length > 0) {
-            matches.forEach((item) => paths.add(path.resolve(item)))
+      if (autodiscover) {
+        for (const file of globalFiles) {
+          if (yield* fs.existsSafe(file)) {
+            paths.add(path.resolve(file))
             break
+          }
+        }
+
+        // The first project-level match wins so we don't stack AGENTS.md/CLAUDE.md from every ancestor.
+        if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
+          for (const file of instructionFiles) {
+            const matches = yield* fs
+              .findUp(file, ctx.directory, ctx.worktree)
+              .pipe(Effect.catch(() => Effect.succeed([])))
+            if (matches.length > 0) {
+              matches.forEach((item) => paths.add(path.resolve(item)))
+              break
+            }
           }
         }
       }
@@ -180,6 +183,9 @@ export const layer: Layer.Layer<
       filepath: string,
       messageID: MessageID,
     ) {
+      const config = yield* cfg.get()
+      if (config.autodiscover_instructions === false) return []
+
       const sys = yield* systemPaths()
       const already = extract(messages)
       const results: { filepath: string; content: string }[] = []

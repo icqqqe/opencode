@@ -241,6 +241,10 @@ export const Info = Schema.Struct({
   instructions: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({
     description: "Additional instruction files or patterns to include",
   }),
+  autodiscover_instructions: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Enable automatic discovery of instruction files such as AGENTS.md, CLAUDE.md, and CONTEXT.md. Defaults to true.",
+  }),
   layout: Schema.optional(ConfigLayout.Layout).annotate({ description: "@deprecated Always uses stretch layout." }),
   permission: Schema.optional(ConfigPermission.Info),
   tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),

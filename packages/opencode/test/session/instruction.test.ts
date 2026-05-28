@@ -5,6 +5,7 @@ import { FetchHttpClient } from "effect/unstable/http"
 import { NodeFileSystem } from "@effect/platform-node"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { Config } from "../../src/config/config"
 import { ModelID, ProviderID } from "../../src/provider/schema"
 import { Instruction } from "../../src/session/instruction"
 import type { MessageV2 } from "../../src/session/message-v2"
@@ -17,11 +18,13 @@ import { TestConfig } from "../fixture/config"
 
 const it = testEffect(Layer.mergeAll(CrossSpawnSpawner.defaultLayer, NodeFileSystem.layer))
 
-const configLayer = TestConfig.layer()
-
-const instructionLayer = (global: Partial<Global.Interface>, flags: Partial<RuntimeFlags.Info> = {}) =>
+const instructionLayer = (
+  global: Partial<Global.Interface>,
+  flags: Partial<RuntimeFlags.Info> = {},
+  config: Partial<Config.Info> = {},
+) =>
   Instruction.layer.pipe(
-    Layer.provide(configLayer),
+    Layer.provide(TestConfig.layer({ get: () => Effect.succeed(config) })),
     Layer.provide(AppFileSystem.defaultLayer),
     Layer.provide(FetchHttpClient.layer),
     Layer.provide(Global.layerWith(global)),
@@ -29,9 +32,9 @@ const instructionLayer = (global: Partial<Global.Interface>, flags: Partial<Runt
   )
 
 const provideInstruction =
-  (global: Partial<Global.Interface>, flags?: Partial<RuntimeFlags.Info>) =>
+  (global: Partial<Global.Interface>, flags?: Partial<RuntimeFlags.Info>, config?: Partial<Config.Info>) =>
   <A, E, R>(self: Effect.Effect<A, E, R>) =>
-    self.pipe(Effect.provide(instructionLayer(global, flags)))
+    self.pipe(Effect.provide(instructionLayer(global, flags, config)))
 
 const write = (filepath: string, content: string) =>
   Effect.gen(function* () {
@@ -195,6 +198,24 @@ describe("Instruction.resolve", () => {
     ),
   )
 
+  it.live("skips nearby AGENTS.md when instruction autodiscovery is disabled", () =>
+    provideTmpdirInstance((dir) =>
+      Effect.gen(function* () {
+        yield* writeFiles(dir, { "subdir/AGENTS.md": "# Subdir Instructions", "subdir/nested/file.ts": "const x = 1" })
+
+        yield* Effect.gen(function* () {
+          const svc = yield* Instruction.Service
+          const results = yield* svc.resolve(
+            [],
+            path.join(dir, "subdir", "nested", "file.ts"),
+            MessageID.make("msg_message-no-autodiscover-1"),
+          )
+          expect(results).toEqual([])
+        }).pipe(provideInstruction({ home: dir, config: dir }, undefined, { autodiscover_instructions: false }))
+      }),
+    ),
+  )
+
   test.todo("fetches remote instructions from config URLs via HttpClient", () => {})
 })
 
@@ -233,6 +254,42 @@ describe("Instruction.system", () => {
         provideInstance(projectTmp),
         provideInstruction({ home: globalTmp, config: globalTmp }, { disableClaudeCodePrompt: true }),
       )
+    }),
+  )
+
+  it.live("skips automatic project and global AGENTS.md when instruction autodiscovery is disabled", () =>
+    Effect.gen(function* () {
+      const globalTmp = yield* tmpWithFiles({ "AGENTS.md": "# Global Instructions" })
+      const projectTmp = yield* tmpWithFiles({ "AGENTS.md": "# Project Instructions" })
+
+      yield* Effect.gen(function* () {
+        const svc = yield* Instruction.Service
+        expect(yield* svc.systemPaths()).toEqual(new Set())
+        expect(yield* svc.system()).toEqual([])
+      }).pipe(provideInstance(projectTmp), provideInstruction({ home: globalTmp, config: globalTmp }, undefined, {
+        autodiscover_instructions: false,
+      }))
+    }),
+  )
+
+  it.live("loads explicit instructions when instruction autodiscovery is disabled", () =>
+    Effect.gen(function* () {
+      const globalTmp = yield* tmpWithFiles({ "AGENTS.md": "# Global Instructions" })
+      const projectTmp = yield* tmpWithFiles({
+        "AGENTS.md": "# Project Instructions",
+        "CUSTOM.md": "# Custom Instructions",
+      })
+      const explicit = path.join(projectTmp, "CUSTOM.md")
+
+      yield* Effect.gen(function* () {
+        const svc = yield* Instruction.Service
+        const paths = yield* svc.systemPaths()
+        expect(paths).toEqual(new Set([explicit]))
+        expect(yield* svc.system()).toEqual([`Instructions from: ${explicit}\n# Custom Instructions`])
+      }).pipe(provideInstance(projectTmp), provideInstruction({ home: globalTmp, config: globalTmp }, undefined, {
+        autodiscover_instructions: false,
+        instructions: [explicit],
+      }))
     }),
   )
 })

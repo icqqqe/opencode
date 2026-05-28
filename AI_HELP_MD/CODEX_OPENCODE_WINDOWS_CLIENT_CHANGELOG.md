@@ -9,6 +9,37 @@
 - 只记录事实和工程判断，不记录账号、token、私钥等敏感信息。
 - 本文件只做追踪记录，不代表已经提交到 Git 或推送到 GitHub。
 
+## 2026-05-28 15:03:29 +08:00 - 修复 Markdown 隐式相对路径误点击
+
+### 背景
+
+用户发现 assistant 回复中的 `CODEX\AGENTS.md` 会被桌面端渲染成可点击本地文件，并错误指向当前会话目录下的 `E:\workspace\game\ts_workspace\CODEX\AGENTS.md`，而真实目标应在 `E:\workspace\game\ts_workspace\ai_custom\CODEX\AGENTS.md`。
+
+### 原因
+
+- `packages/ui/src/components/markdown.tsx` 会扫描 Markdown 文本中所有看起来像本地路径的字符串。
+- 原实现把非绝对、但带路径分隔符的字符串也加入本地文件别名，并用当前会话目录拼接。
+- 因此 `CODEX\AGENTS.md` 这类“隐式相对路径”会被误判成可打开路径，违反了此前“只有真实全路径或可靠别名才可点击”的设计原则。
+
+### 涉及文件与修改内容
+
+- `packages/ui/src/components/markdown.tsx`
+  - 新增本地路径别名选项，区分可信路径来源和普通 Markdown 文本。
+  - 普通 Markdown 文本中只接受绝对路径、明确 `./` / `../` 开头的相对路径，或已经能通过绝对路径/工具元数据反查的别名。
+  - 不再把 `CODEX\AGENTS.md`、`AI_HELP_MD\xxx.md` 这类隐式相对路径直接拼到当前会话目录。
+
+- `packages/ui/src/components/markdown.test.ts`
+  - 新增单测覆盖隐式相对路径不自动拼目录。
+  - 新增单测覆盖同一消息内已有绝对路径时，短路径仍可通过别名解析。
+  - 新增单测覆盖明确相对路径仍按会话目录解析。
+
+### 验证结果
+
+- `packages/ui`: `bun test src/components/markdown.test.ts`
+  - 3 pass。
+- `packages/ui`: `bun run typecheck`
+  - 通过。
+
 ## 2026-05-28 14:30:34 +08:00 - 合并官方 dev 时处理 PromptInput 冲突
 
 ### 背景

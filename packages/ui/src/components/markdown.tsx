@@ -84,6 +84,10 @@ type LocalFileLinks = {
   aliases: Map<string, string>
 }
 
+type LocalFileAliasOptions = {
+  allowImplicitRelative?: boolean
+}
+
 const localFileExtensionSource =
   "(?:d\\.ts|md|markdown|tsx?|jsx?|mjs|cjs|jsonc?|ya?ml|toml|txt|css|scss|html?|py|rs|go|java|c|cc|cpp|cxx|h|hh|hpp|cs|lua|xml|csv|ini|sh|bash|bat|cmd|ps1)"
 const windowsPathSource = String.raw`[A-Za-z]:\\[^\s<>"|?*]+?\.${localFileExtensionSource}(?::\d+)?`
@@ -150,11 +154,20 @@ function joinLocalPath(directory: string | undefined, value: string) {
   return `${base}${separator}${child}`
 }
 
-function setLocalFileAlias(aliases: Map<string, string>, value: string, directory?: string) {
+function setLocalFileAlias(
+  aliases: Map<string, string>,
+  value: string,
+  directory?: string,
+  options: LocalFileAliasOptions = {},
+) {
   const path = normalizeLocalFileCandidate(value)
   if (!path) return
-  if (!isAbsoluteLocalPath(path) && !hasPathSeparator(path)) return
-  const resolved = isAbsoluteLocalPath(path) ? path : joinLocalPath(directory, path)
+  const absolute = isAbsoluteLocalPath(path)
+  if (!absolute) {
+    if (!hasPathSeparator(path)) return
+    if (!isExplicitRelativePath(path) && !options.allowImplicitRelative) return
+  }
+  const resolved = absolute ? path : joinLocalPath(directory, path)
   if (!resolved) return
 
   for (const key of [...localFileAliasKeys(path), ...localFileAliasKeys(resolved)]) {
@@ -184,7 +197,7 @@ function resolveLocalFileCandidate(raw: string, options: LocalFileLinks) {
 function collectLocalFileAliases(markdown: string, directory?: string, extraPaths?: string[]) {
   const aliases = new Map<string, string>()
   for (const path of extraPaths ?? []) {
-    setLocalFileAlias(aliases, path, directory)
+    setLocalFileAlias(aliases, path, directory, { allowImplicitRelative: true })
   }
 
   localFileTextPattern.lastIndex = 0
@@ -192,6 +205,19 @@ function collectLocalFileAliases(markdown: string, directory?: string, extraPath
     setLocalFileAlias(aliases, match[0], directory)
   }
   return aliases
+}
+
+export function resolveMarkdownLocalFileLinkTarget(input: {
+  text: string
+  path: string
+  directory?: string
+  aliases?: string[]
+}) {
+  return resolveLocalFileCandidate(input.path, {
+    directory: input.directory,
+    open: () => {},
+    aliases: collectLocalFileAliases(input.text, input.directory, input.aliases),
+  })
 }
 
 function createLocalFileLink(text: string, path: string) {

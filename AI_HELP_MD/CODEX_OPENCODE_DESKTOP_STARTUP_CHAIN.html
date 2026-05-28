@@ -1,0 +1,1340 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenCode Desktop 启动链路可视化</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --panel-soft: #f1f5f8;
+        --text: #17202a;
+        --muted: #5f6c78;
+        --line: #cfd7df;
+        --border: #dbe2e8;
+        --blue: #1f6fb2;
+        --blue-soft: #dcecf8;
+        --green: #28724f;
+        --green-soft: #dff0e8;
+        --amber: #9b6422;
+        --amber-soft: #f4e6d0;
+        --red: #a7433f;
+        --red-soft: #f3dddd;
+        --ink: #101923;
+        --code: #0f1720;
+        --shadow: 0 14px 42px rgba(20, 31, 45, 0.08);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Microsoft YaHei", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.55;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .page {
+        min-height: 100vh;
+      }
+
+      .hero {
+        background: var(--panel);
+        border-bottom: 1px solid var(--border);
+      }
+
+      .hero-inner {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 28px 26px 22px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--blue);
+        font-weight: 700;
+        font-size: 13px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 34px;
+        line-height: 1.16;
+        letter-spacing: 0;
+      }
+
+      .hero-copy {
+        max-width: 980px;
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      .answer-strip {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      .answer-card {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel-soft);
+        padding: 14px 15px;
+      }
+
+      .answer-card strong {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--ink);
+      }
+
+      .answer-card span {
+        display: block;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .layout {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 24px 26px 42px;
+      }
+
+      .section-title {
+        margin: 0 0 12px;
+        font-size: 21px;
+        line-height: 1.25;
+      }
+
+      .two-column {
+        display: grid;
+        grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+      }
+
+      .timeline {
+        padding: 14px;
+        position: sticky;
+        top: 14px;
+      }
+
+      .lane-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 12px 4px 8px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .lane-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--blue);
+      }
+
+      .lane-dot.run {
+        background: var(--green);
+      }
+
+      .step-button {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+        border: 1px solid var(--border);
+        background: #fff;
+        color: var(--text);
+        text-align: left;
+        border-radius: 8px;
+        padding: 11px;
+        margin: 8px 0;
+        cursor: pointer;
+      }
+
+      .step-button:hover,
+      .step-button.active {
+        border-color: var(--blue);
+        background: #f8fbfe;
+      }
+
+      .step-button.active {
+        box-shadow: inset 3px 0 0 var(--blue);
+      }
+
+      .num {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--blue-soft);
+        color: var(--blue);
+        font-weight: 800;
+        font-size: 13px;
+      }
+
+      .step-button.run .num {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .step-button.warn .num {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+
+      .step-title {
+        display: block;
+        font-weight: 750;
+        color: var(--ink);
+      }
+
+      .step-sub {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 2px;
+      }
+
+      .detail-wrap {
+        min-height: 720px;
+      }
+
+      .detail {
+        display: none;
+        padding: 22px;
+      }
+
+      .detail.active {
+        display: block;
+      }
+
+      .detail h2 {
+        margin: 0;
+        font-size: 25px;
+        line-height: 1.2;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 12px 0 18px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 5px 9px;
+        color: var(--muted);
+        background: #fff;
+        font-size: 13px;
+      }
+
+      .pill.blue {
+        color: var(--blue);
+        background: var(--blue-soft);
+        border-color: #b8d8f0;
+      }
+
+      .pill.green {
+        color: var(--green);
+        background: var(--green-soft);
+        border-color: #b9dccb;
+      }
+
+      .pill.amber {
+        color: var(--amber);
+        background: var(--amber-soft);
+        border-color: #e0c79e;
+      }
+
+      .explain {
+        margin: 0 0 16px;
+        color: var(--text);
+      }
+
+      .callout {
+        margin: 16px 0;
+        border-left: 4px solid var(--blue);
+        background: #f6fbff;
+        padding: 12px 14px;
+        border-radius: 0 8px 8px 0;
+      }
+
+      .callout strong {
+        display: block;
+        margin-bottom: 3px;
+      }
+
+      .codebox {
+        margin: 14px 0;
+        background: var(--code);
+        color: #dce7f1;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #223142;
+      }
+
+      .code-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 9px 12px;
+        background: #152231;
+        color: #aebfce;
+        font-size: 12px;
+      }
+
+      pre {
+        margin: 0;
+        padding: 13px 14px 15px;
+        overflow: auto;
+        font-family:
+          "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 13px;
+        line-height: 1.55;
+        white-space: pre;
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .mini-card {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px;
+        background: var(--panel);
+      }
+
+      .mini-card h3 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+
+      .mini-card p,
+      .mini-card li {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .mini-card p {
+        margin: 0;
+      }
+
+      .mini-card ul {
+        margin: 8px 0 0;
+        padding-left: 19px;
+      }
+
+      .flow-map {
+        margin-top: 26px;
+      }
+
+      .flow-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .flow-node {
+        position: relative;
+        min-height: 138px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 14px;
+      }
+
+      .flow-node::after {
+        content: ">";
+        position: absolute;
+        right: -12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted);
+        font-weight: 800;
+      }
+
+      .flow-node:nth-child(4n)::after,
+      .flow-node.last::after {
+        display: none;
+      }
+
+      .flow-node h3 {
+        margin: 0 0 7px;
+        font-size: 15px;
+      }
+
+      .flow-node p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .process-map {
+        margin-top: 26px;
+      }
+
+      .process-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .process {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 13px;
+      }
+
+      .process .tag {
+        display: inline-block;
+        margin-bottom: 8px;
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: var(--panel-soft);
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .process h3 {
+        margin: 0 0 6px;
+        font-size: 15px;
+      }
+
+      .process p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .matrix {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .matrix th,
+      .matrix td {
+        border: 1px solid var(--border);
+        text-align: left;
+        vertical-align: top;
+        padding: 11px;
+        font-size: 14px;
+      }
+
+      .matrix th {
+        background: var(--panel-soft);
+        color: var(--ink);
+      }
+
+      .matrix td {
+        color: var(--muted);
+      }
+
+      .footer-note {
+        margin-top: 24px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      @media (max-width: 980px) {
+        .answer-strip,
+        .two-column,
+        .grid.two,
+        .flow-grid,
+        .process-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .timeline {
+          position: static;
+        }
+
+        .flow-node::after {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">OpenCode Windows Desktop Debug Chain</p>
+          <h1>从 VSCode 绿色运行按钮到 Electron main、sidecar、opencode server</h1>
+          <p class="hero-copy">
+            这张图把两件事拆开：先是 VSCode 的 preLaunchTask 做构建；构建成功后，VSCode 才启动
+            Electron。sidecar.js 不是 build 时运行的，它是在 Electron main 进程启动后由 utilityProcess.fork 拉起来的。
+          </p>
+          <div class="answer-strip">
+            <div class="answer-card">
+              <strong>谁触发 electron.vite.config.ts</strong>
+              <span>命令是 <code>electron-vite build</code>。electron-vite CLI 会默认查找并加载 <code>electron.vite.config.ts</code>。</span>
+            </div>
+            <div class="answer-card">
+              <strong>build 怎么变成 run</strong>
+              <span>build 不会自己 run。VSCode 等 preLaunchTask 完成后，继续执行 launch.json 的 <code>runtimeExecutable</code>。</span>
+            </div>
+            <div class="answer-card">
+              <strong>sidecar 什么时候运行</strong>
+              <span>Electron main 进程运行后，走到 <code>spawnLocalServer()</code>，用 <code>utilityProcess.fork(out/main/sidecar.js)</code> 启动。</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="layout">
+        <section class="two-column">
+          <nav class="panel timeline" aria-label="启动链路">
+            <div class="lane-label"><span class="lane-dot"></span>构建阶段 - preLaunchTask</div>
+            <button class="step-button active" type="button" data-step="launch">
+              <span class="num">1</span>
+              <span>
+                <span class="step-title">VSCode 点击运行</span>
+                <span class="step-sub">读取 launch.json 的配置和 preLaunchTask</span>
+              </span>
+            </button>
+            <button class="step-button" type="button" data-step="prepare">
+              <span class="num">2</span>
+              <span>
+                <span class="step-title">tasks.json 串行任务</span>
+                <span class="step-sub">先 install，再 desktop build prod sourcemap</span>
+              </span>
+            </button>
+            <button class="step-button warn" type="button" data-step="bun">
+              <span class="num">3</span>
+              <span>
+                <span class="step-title">Bun script lifecycle</span>
+                <span class="step-sub">bun run build 会先执行 prebuild</span>
+              </span>
+            </button>
+            <button class="step-button" type="button" data-step="prebuild">
+              <span class="num">4</span>
+              <span>
+                <span class="step-title">desktop prebuild</span>
+                <span class="step-sub">复制资源并进入 packages/opencode 构建 server 模块</span>
+              </span>
+            </button>
+            <button class="step-button" type="button" data-step="nodebuild">
+              <span class="num">5</span>
+              <span>
+                <span class="step-title">build-node.ts</span>
+                <span class="step-sub">src/node.ts -> dist/node/node.js</span>
+              </span>
+            </button>
+            <button class="step-button" type="button" data-step="evite">
+              <span class="num">6</span>
+              <span>
+                <span class="step-title">electron-vite build</span>
+                <span class="step-sub">CLI 加载 electron.vite.config.ts</span>
+              </span>
+            </button>
+            <button class="step-button" type="button" data-step="bundle">
+              <span class="num">7</span>
+              <span>
+                <span class="step-title">产物生成</span>
+                <span class="step-sub">index.js、sidecar.js、preload、renderer</span>
+              </span>
+            </button>
+
+            <div class="lane-label"><span class="lane-dot run"></span>运行阶段 - VSCode launch</div>
+            <button class="step-button run" type="button" data-step="electron">
+              <span class="num">8</span>
+              <span>
+                <span class="step-title">VSCode 启动 electron.exe</span>
+                <span class="step-sub">runtimeExecutable + args ["."]</span>
+              </span>
+            </button>
+            <button class="step-button run" type="button" data-step="main">
+              <span class="num">9</span>
+              <span>
+                <span class="step-title">Electron main 进程</span>
+                <span class="step-sub">package.json 的 main 指向 out/main/index.js</span>
+              </span>
+            </button>
+            <button class="step-button run" type="button" data-step="fork">
+              <span class="num">10</span>
+              <span>
+                <span class="step-title">main fork sidecar</span>
+                <span class="step-sub">utilityProcess.fork(out/main/sidecar.js)</span>
+              </span>
+            </button>
+            <button class="step-button run" type="button" data-step="sidecar">
+              <span class="num">11</span>
+              <span>
+                <span class="step-title">sidecar 收 start 消息</span>
+                <span class="step-sub">import virtual server 并 Server.listen</span>
+              </span>
+            </button>
+            <button class="step-button run" type="button" data-step="renderer">
+              <span class="num">12</span>
+              <span>
+                <span class="step-title">renderer 获取 sidecar 地址</span>
+                <span class="step-sub">preload IPC -> main -> 返回 url/password</span>
+              </span>
+            </button>
+          </nav>
+
+          <section class="panel detail-wrap" aria-live="polite">
+            <article class="detail active" id="detail-launch">
+              <h2>1. VSCode 点击绿色运行按钮</h2>
+              <div class="meta">
+                <span class="pill blue">VSCode Debugger</span>
+                <span class="pill">文件：.vscode/launch.json:5-22</span>
+                <span class="pill">阶段：先构建，后启动</span>
+              </div>
+              <p class="explain">
+                点击运行后，VSCode 选中的是 <strong>OpenCode Prod: Main Entry</strong>。
+                这个配置告诉 VSCode：启动真正的 Electron 前，必须先执行一个 <code>preLaunchTask</code>。
+              </p>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\.vscode\launch.json</span>
+                  <span>5-22</span>
+                </div>
+                <pre><code>5  "name": "OpenCode Prod: Main Entry",
+8  "cwd": "${workspaceFolder}\\packages\\desktop",
+9  "runtimeExecutable": "${workspaceFolder}\\packages\\desktop\\node_modules\\.bin\\electron.exe",
+10 "args": ["."],
+11 "env": {
+12   "OPENCODE_CHANNEL": "prod"
+13 },
+14 "preLaunchTask": "opencode: desktop prepare prod debug",
+15 "sourceMaps": true,
+16 "outFiles": ["${workspaceFolder}/packages/desktop/out/main/**/*.js"],
+20 "autoAttachChildProcesses": true</code></pre>
+              </div>
+              <div class="callout">
+                <strong>关键点</strong>
+                <span>第 14 行决定先跑 tasks.json。第 9-10 行才是后面真正启动桌面应用的命令，相当于在 packages/desktop 目录执行 electron.exe .。</span>
+              </div>
+            </article>
+
+            <article class="detail" id="detail-prepare">
+              <h2>2. preLaunchTask 进入 tasks.json</h2>
+              <div class="meta">
+                <span class="pill blue">PowerShell task</span>
+                <span class="pill">文件：.vscode/tasks.json:46-63</span>
+                <span class="pill">顺序：dependsOrder sequence</span>
+              </div>
+              <p class="explain">
+                <code>opencode: desktop prepare prod debug</code> 不是一个 shell 命令，而是一个组合 task。
+                它要求 VSCode 顺序执行两个 task：先安装依赖，再构建 desktop。
+              </p>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\.vscode\tasks.json</span>
+                  <span>46-63</span>
+                </div>
+                <pre><code>46 "label": "opencode: desktop build prod sourcemap",
+48 "command": "...; $env:OPENCODE_CHANNEL = 'prod'; bun run build --sourcemap",
+49 "options": {
+50   "cwd": "${workspaceFolder}\\packages\\desktop"
+51 }
+
+60 "label": "opencode: desktop prepare prod debug",
+61 "dependsOrder": "sequence",
+62 "dependsOn": [
+     "opencode: install dependencies",
+     "opencode: desktop build prod sourcemap"
+   ]</code></pre>
+              </div>
+              <div class="callout">
+                <strong>这一步的 cwd</strong>
+                <span><code>bun run build --sourcemap</code> 是在 <code>E:\mygithub\opencode\packages\desktop</code> 下执行的，所以它读取的是 desktop 包的 package.json。</span>
+              </div>
+            </article>
+
+            <article class="detail" id="detail-bun">
+              <h2>3. Bun 为什么会先跑 prebuild</h2>
+              <div class="meta">
+                <span class="pill amber">Bun package script lifecycle</span>
+                <span class="pill">文件：packages/desktop/package.json:12-18</span>
+                <span class="pill">命令：bun run build --sourcemap</span>
+              </div>
+              <p class="explain">
+                desktop 包里同时定义了 <code>prebuild</code> 和 <code>build</code>。
+                Bun 执行 package script 时会遵循 npm 风格的生命周期：有 <code>prebuild</code> 就先执行它，然后执行 <code>build</code>。
+              </p>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\packages\desktop\package.json</span>
+                  <span>12-18</span>
+                </div>
+                <pre><code>12 "scripts": {
+14   "predev": "bun ./scripts/predev.ts",
+15   "dev": "electron-vite dev",
+16   "prebuild": "bun ./scripts/prebuild.ts",
+17   "build": "electron-vite build",
+18   "preview": "electron-vite preview"
+   }</code></pre>
+              </div>
+              <div class="callout">
+                <strong>真实展开</strong>
+                <span><code>bun run build --sourcemap</code> 展开后可以理解为：先 <code>bun ./scripts/prebuild.ts</code>，再 <code>electron-vite build --sourcemap</code>。</span>
+              </div>
+            </article>
+
+            <article class="detail" id="detail-prebuild">
+              <h2>4. desktop prebuild 做了什么</h2>
+              <div class="meta">
+                <span class="pill blue">Bun script process</span>
+                <span class="pill">文件：packages/desktop/scripts/prebuild.ts:6-10</span>
+                <span class="pill">输出：准备 desktop 构建资源</span>
+              </div>
+              <p class="explain">
+                prebuild 先按 channel 复制图标和 metainfo，然后进入 <code>packages/opencode</code> 执行 <code>script/build-node.ts</code>。
+                这一步是为了先把 opencode server 打成 desktop sidecar 可以 import 的 Node ESM 模块。
+              </p>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\packages\desktop\scripts\prebuild.ts</span>
+                  <span>6-10</span>
+                </div>
+                <pre><code>6  const channel = resolveChannel()
+7  await $`bun ./scripts/copy-icons.ts ${channel}`
+8  await $`bun ./scripts/copy-metainfo.ts ${channel}`
+10 await $`cd ../opencode && bun script/build-node.ts`</code></pre>
+              </div>
+              <div class="callout">
+                <strong>路径换算</strong>
+                <span>因为当前 cwd 是 <code>packages/desktop</code>，所以 <code>cd ../opencode</code> 之后就是 <code>E:\mygithub\opencode\packages\opencode</code>。</span>
+              </div>
+            </article>
+
+            <article class="detail" id="detail-nodebuild">
+              <h2>5. build-node.ts 生成 opencode server 模块</h2>
+              <div class="meta">
+                <span class="pill blue">Bun.build</span>
+                <span class="pill">文件：packages/opencode/script/build-node.ts:46-61</span>
+                <span class="pill">入口：src/node.ts</span>
+              </div>
+              <p class="explain">
+                这里不是构建 CLI 入口 <code>src/index.ts</code>，而是构建 <code>src/node.ts</code>。
+                <code>src/node.ts</code> 专门导出 <code>Server</code>、<code>Database</code>、<code>JsonMigration</code> 等模块，供 desktop sidecar import。
+              </p>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\packages\opencode\script\build-node.ts</span>
+                  <span>46-61</span>
+                </div>
+                <pre><code>46 await Bun.build({
+47   target: "node",
+48   entrypoints: ["./src/node.ts"],
+49   outdir: "./dist/node",
+50   format: "esm",
+51   sourcemap: "linked",
+53   define: {
+54     OPENCODE_MIGRATIONS: JSON.stringify(migrations),
+55     OPENCODE_MODELS_DEV: generated.modelsData,
+56     OPENCODE_CHANNEL: `'${Script.channel}'`,
+57   }
+61 })</code></pre>
+              </div>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\packages\opencode\src\node.ts</span>
+                  <span>1-6</span>
+                </div>
+                <pre><code>1 export { Config } from "@/config/config"
+2 export { Server } from "./server/server"
+3 export { bootstrap } from "./cli/bootstrap"
+4 export * as Log from "@opencode-ai/core/util/log"
+5 export { Database } from "@/storage/db"
+6 export { JsonMigration } from "@/storage/json-migration"</code></pre>
+              </div>
+              <div class="callout">
+                <strong>重要纠正</strong>
+                <span>desktop sidecar 这条路径不直接走 <code>packages/opencode/src/index.ts</code>。<code>src/index.ts</code> 是 CLI yargs 入口，比如命令行 <code>opencode serve</code> 才会走它。</span>
+              </div>
+            </article>
+
+            <article class="detail" id="detail-evite">
+              <h2>6. electron-vite build 怎么跳到 electron.vite.config.ts</h2>
+              <div class="meta">
+                <span class="pill blue">electron-vite CLI</span>
+                <span class="pill">命令：electron-vite build --sourcemap</span>
+                <span class="pill">配置文件：electron.vite.config.ts</span>
+              </div>
+              <p class="explain">
+                <code>electron-vite build</code> 进入 electron-vite 的 CLI。它的 build 子命令会调用 <code>build()</code>，
+                <code>build()</code> 先 <code>resolveConfig()</code>，而 <code>resolveConfig()</code> 会默认查找 <code>electron.vite.config.*</code>。
+              </p>
+              <div class="grid two">
+                <div class="codebox">
+                  <div class="code-title">
+                    <span>node_modules/electron-vite/dist/cli.js</span>
+                    <span>76-84</span>
+                  </div>
+                  <pre><code>76 cli.command('build [root]', 'build for production')
+77   const { build } = await import('./chunks/lib-BkLsMF4i.js')
+78   const inlineConfig = createInlineConfig(root, options)
+83   await build(inlineConfig)</code></pre>
+                </div>
+                <div class="codebox">
+                  <div class="code-title">
+                    <span>node_modules/electron-vite/dist/chunks/lib-BkLsMF4i.js</span>
+                    <span>18-25</span>
+                  </div>
+                  <pre><code>18 async function build(inlineConfig = {}) {
+20   const config = await resolveConfig(inlineConfig, 'build', 'production')
+24   // Build targets in order: main -> preload -> renderer
+25   const buildTargets = ['main', 'preload', 'renderer']</code></pre>
+                </div>
+              </div>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>node_modules/electron-vite/dist/chunks/lib-q6ns0vZr.js</span>
+                  <span>1513-1702</span>
+                </div>
+                <pre><code>1513 async function resolveConfig(inlineConfig, command, defaultMode = 'development') {
+1525   const loadResult = await loadConfigFromFile(configEnv, configFile, config.root, ...)
+}
+
+1657 const CONFIG_FILE_NAME = 'electron.vite.config'
+1662 const resolvedPath = configFile
+1663   ? path.resolve(configFile)
+1664   : findConfigFile(configRoot, ['js', 'ts', 'mjs', 'cjs', 'mts', 'cts'])
+
+1697 function findConfigFile(configRoot, extensions) {
+1699   const configFile = path.resolve(configRoot, `${CONFIG_FILE_NAME}.${ext}`)
+1700   if (fs.existsSync(configFile)) return configFile
+}</code></pre>
+              </div>
+              <div class="callout">
+                <strong>这就是跳转依据</strong>
+                <span>因为 task 的 cwd 是 <code>packages/desktop</code>，electron-vite 的 configRoot 就是 desktop 目录；它默认找 <code>electron.vite.config.ts</code>，所以会执行 <code>E:\mygithub\opencode\packages\desktop\electron.vite.config.ts</code>。</span>
+              </div>
+            </article>
+
+            <article class="detail" id="detail-bundle">
+              <h2>7. electron.vite.config.ts 决定构建哪些入口</h2>
+              <div class="meta">
+                <span class="pill blue">Vite/Rollup build config</span>
+                <span class="pill">文件：packages/desktop/electron.vite.config.ts:34-96</span>
+                <span class="pill">产物：out/main、out/preload、out/renderer</span>
+              </div>
+              <p class="explain">
+                这一步仍然是构建，不是运行。main 构建包含两个入口：<code>src/main/index.ts</code> 和
+                <code>src/main/sidecar.ts</code>。所以构建完会有 <code>out/main/index.js</code> 和 <code>out/main/sidecar.js</code>。
+              </p>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\packages\desktop\electron.vite.config.ts</span>
+                  <span>34-59</span>
+                </div>
+                <pre><code>34 export default defineConfig({
+35   main: {
+39     build: {
+40       rollupOptions: {
+41         input: { index: "src/main/index.ts", sidecar: "src/main/sidecar.ts" },
+42       },
+43       externalizeDeps: { include: [nodePtyPkg] },
+44     },
+45     plugins: [
+54       name: "opencode:virtual-server-module",
+56       resolveId(id) {
+57         if (id === "virtual:opencode-server") return this.resolve(`${OPENCODE_SERVER_DIST}/node.js`)
+58       }
+59     ]</code></pre>
+              </div>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\packages\desktop\electron.vite.config.ts</span>
+                  <span>71-95</span>
+                </div>
+                <pre><code>71 preload: {
+73   rollupOptions: {
+74     input: { index: "src/preload/index.ts" }
+75   }
+82 renderer: {
+85   root: "src/renderer",
+88   rollupOptions: {
+90     main: "src/renderer/index.html",
+91     loading: "src/renderer/loading.html"
+92   }
+}</code></pre>
+              </div>
+              <div class="callout">
+                <strong>virtual:opencode-server 的含义</strong>
+                <span>它不是运行时动态找源码；在构建 sidecar.ts 时，Vite 插件把这个模块名解析到前面生成的 <code>packages/opencode/dist/node/node.js</code>。</span>
+              </div>
+            </article>
+
+            <article class="detail" id="detail-electron">
+              <h2>8. preLaunchTask 结束后，VSCode 才启动 Electron</h2>
+              <div class="meta">
+                <span class="pill green">运行阶段开始</span>
+                <span class="pill">文件：.vscode/launch.json:8-14</span>
+                <span class="pill">命令：electron.exe .</span>
+              </div>
+              <p class="explain">
+                这就是“build 后怎么 run 起来”的答案：不是 build 命令自己 run，而是 VSCode debug 流程在
+                <code>preLaunchTask</code> 成功结束后继续执行 launch 配置里的 runtime。
+              </p>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\.vscode\launch.json</span>
+                  <span>8-14</span>
+                </div>
+                <pre><code>8  "cwd": "${workspaceFolder}\\packages\\desktop",
+9  "runtimeExecutable": "${workspaceFolder}\\packages\\desktop\\node_modules\\.bin\\electron.exe",
+10 "args": ["."],
+11 "env": {
+12   "OPENCODE_CHANNEL": "prod"
+13 },
+14 "preLaunchTask": "opencode: desktop prepare prod debug"</code></pre>
+              </div>
+              <div class="callout">
+                <strong>等价理解</strong>
+                <span>VSCode 在 <code>packages/desktop</code> 目录启动 <code>electron.exe .</code>，并把调试器挂到 Electron main 进程。</span>
+              </div>
+            </article>
+
+            <article class="detail" id="detail-main">
+              <h2>9. Electron 根据 package.json 进入 main 进程</h2>
+              <div class="meta">
+                <span class="pill green">Electron main process</span>
+                <span class="pill">文件：packages/desktop/package.json:25</span>
+                <span class="pill">入口：out/main/index.js</span>
+              </div>
+              <p class="explain">
+                Electron 收到参数 <code>.</code> 后，会把当前目录当成 Electron app 目录，然后读取这个目录的
+                <code>package.json</code>。其中 <code>main</code> 字段指向编译后的 main 入口。
+              </p>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\packages\desktop\package.json</span>
+                  <span>25</span>
+                </div>
+                <pre><code>25 "main": "./out/main/index.js"</code></pre>
+              </div>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\packages\desktop\src\main\index.ts</span>
+                  <span>234-255</span>
+                </div>
+                <pre><code>234 yield* Effect.promise(() => app.whenReady())
+236 if (!TEST_ONBOARDING) migrate()
+237 app.setAsDefaultProtocolClient("opencode")
+238 registerRendererProtocol()
+240 setupAutoUpdater()
+249 const needsMigration = (() => {
+254   return !existsSync(join(base, "opencode", "opencode.db"))
+255 })()</code></pre>
+              </div>
+              <div class="callout">
+                <strong>到这里才是运行时</strong>
+                <span>前面生成的 <code>out/main/index.js</code> 现在被 Electron main 进程执行。sidecar.js 还没有运行。</span>
+              </div>
+            </article>
+
+            <article class="detail" id="detail-fork">
+              <h2>10. Electron main 进程 fork sidecar.js</h2>
+              <div class="meta">
+                <span class="pill green">Electron Utility Process</span>
+                <span class="pill">文件：src/main/index.ts:258-325</span>
+                <span class="pill">文件：src/main/server.ts:69-81</span>
+              </div>
+              <p class="explain">
+                main 进程先找一个可用本地端口，生成一次性 password，然后调用 <code>spawnLocalServer()</code>。
+                <code>spawnLocalServer()</code> 用 Electron 的 <code>utilityProcess.fork</code> 启动编译后的 <code>out/main/sidecar.js</code>。
+              </p>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\packages\desktop\src\main\index.ts</span>
+                  <span>258-307</span>
+                </div>
+                <pre><code>258 const port = yield* Effect.gen(function* () {
+268   server.listen(0, "127.0.0.1", () => {
+275     const port = address.port
+276     server.close(() => Effect.runSync(Deferred.succeed(res, port)))
+280 })
+281 const hostname = "127.0.0.1"
+282 const url = `http://${hostname}:${port}`
+283 const password = randomUUID()
+
+297 logger.log("spawning sidecar", { url })
+298 const { listener, health } = yield* Effect.promise(() =>
+299   spawnLocalServer(hostname, port, password, {
+300     needsMigration,
+301     userDataPath: app.getPath("userData")
+306   })
+307 )</code></pre>
+              </div>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\packages\desktop\src\main\server.ts</span>
+                  <span>69-81</span>
+                </div>
+                <pre><code>69 export async function spawnLocalServer(hostname, port, password, options) {
+75   const sidecar = join(dirname(fileURLToPath(import.meta.url)), "sidecar.js")
+76   const child = utilityProcess.fork(sidecar, [], {
+77     cwd: process.cwd(),
+78     env: createSidecarEnv(),
+79     serviceName: SIDECAR_SERVICE_NAME,
+80     stdio: "pipe",
+81   })</code></pre>
+              </div>
+              <div class="callout">
+                <strong>sidecar 路径如何算出来</strong>
+                <span>运行时 <code>server.ts</code> 已经编译成 <code>out/main/server.js</code>。所以它同目录拼出的 <code>sidecar.js</code> 就是 <code>out/main/sidecar.js</code>。</span>
+              </div>
+            </article>
+
+            <article class="detail" id="detail-sidecar">
+              <h2>11. main 和 sidecar 用消息通信，sidecar 再启动 server</h2>
+              <div class="meta">
+                <span class="pill green">IPC: child.postMessage / process.parentPort</span>
+                <span class="pill">文件：src/main/server.ts:146-156</span>
+                <span class="pill">文件：src/main/sidecar.ts:40-81</span>
+              </div>
+              <p class="explain">
+                fork 只负责把 sidecar 进程拉起来。真正开始监听 HTTP server，是 main 给 sidecar 发
+                <code>{ type: "start" }</code> 之后。sidecar 收到消息后 import server 模块并调用 <code>Server.listen()</code>。
+              </p>
+              <div class="grid two">
+                <div class="codebox">
+                  <div class="code-title">
+                    <span>main -> sidecar</span>
+                    <span>src/main/server.ts:146-156</span>
+                  </div>
+                  <pre><code>146 child.on("message", onMessage)
+147 child.on("exit", onExit)
+148 refreshTimeout()
+149 child.postMessage({
+150   type: "start",
+151   hostname,
+152   port,
+153   password,
+154   userDataPath: options.userDataPath,
+155   needsMigration: options.needsMigration,
+156 })</code></pre>
+                </div>
+                <div class="codebox">
+                  <div class="code-title">
+                    <span>sidecar 接收消息</span>
+                    <span>src/main/sidecar.ts:37-48</span>
+                  </div>
+                  <pre><code>37 const parentPort = getParentPort()
+40 parentPort.on("message", (event) => {
+41   const command = parseCommand(event.data)
+43   if (command.type === "stop") {
+44     void stop()
+47   void start(command)
+48 })</code></pre>
+                </div>
+              </div>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\packages\desktop\src\main\sidecar.ts</span>
+                  <span>50-81</span>
+                </div>
+                <pre><code>50 async function start(command: StartCommand) {
+52   prepareSidecarEnv(command.password, command.userDataPath)
+56   const { Database, JsonMigration, Log, Server } = await import("virtual:opencode-server")
+57   await Log.init({ level: "WARN" })
+59   if (command.needsMigration) {
+60     await JsonMigration.run(...)
+71     parentPort.postMessage({ type: "sqlite", progress: { type: "Done" } })
+72   }
+74   listener = await Server.listen({
+75     port: command.port,
+76     hostname: command.hostname,
+77     username: "opencode",
+78     password: command.password,
+79     cors: ["oc://renderer"],
+80   })
+81   parentPort.postMessage({ type: "ready" })</code></pre>
+              </div>
+              <div class="callout">
+                <strong>server 到底来自哪里</strong>
+                <span><code>virtual:opencode-server</code> 在构建阶段已经被解析到 <code>packages/opencode/dist/node/node.js</code>，这个文件来自 <code>src/node.ts</code>，不是 <code>src/index.ts</code>。</span>
+              </div>
+            </article>
+
+            <article class="detail" id="detail-renderer">
+              <h2>12. renderer 通过 preload IPC 拿到 sidecar 连接信息</h2>
+              <div class="meta">
+                <span class="pill green">Electron IPC + HTTP</span>
+                <span class="pill">preload/index.ts:7-13</span>
+                <span class="pill">renderer/index.tsx:321-344</span>
+              </div>
+              <p class="explain">
+                main 在 sidecar 返回 ready 后 resolve <code>serverReady</code>，renderer 通过 preload 暴露的
+                <code>window.api.awaitInitialization()</code> 拿到 <code>url/username/password</code>，然后把它作为本地 server 连接使用。
+              </p>
+              <div class="grid two">
+                <div class="codebox">
+                  <div class="code-title">
+                    <span>main 保存 serverReady</span>
+                    <span>src/main/index.ts:192-210, 309-313</span>
+                  </div>
+                  <pre><code>192 const serverReady = Deferred.makeUnsafe&lt;ServerReadyData&gt;()
+197 awaitInitialization: Effect.fnUntraced(function* (sendStep) {
+204   const res = yield* Deferred.await(serverReady)
+206   return res
+})
+
+309 yield* Deferred.succeed(serverReady, {
+310   url,
+311   username: "opencode",
+312   password,
+313 })</code></pre>
+                </div>
+                <div class="codebox">
+                  <div class="code-title">
+                    <span>preload 暴露 IPC</span>
+                    <span>src/preload/index.ts:7-13</span>
+                  </div>
+                  <pre><code>7  awaitInitialization: (onStep) => {
+8    const handler = (_: unknown, step: InitStep) => onStep(step)
+9    ipcRenderer.on("init-step", handler)
+10   return ipcRenderer.invoke("await-initialization").finally(() => {
+11     ipcRenderer.removeListener("init-step", handler)
+12   })
+13 }</code></pre>
+                </div>
+              </div>
+              <div class="codebox">
+                <div class="code-title">
+                  <span>E:\mygithub\opencode\packages\desktop\src\renderer\index.tsx</span>
+                  <span>321-344</span>
+                </div>
+                <pre><code>321 // Fetch sidecar credentials (available immediately, before health check)
+322 const [sidecar] = createResource(() => window.api.awaitInitialization(() => undefined))
+
+331 const servers = () => {
+332   const data = sidecar()
+334   const server: ServerConnection.Sidecar = {
+338     http: {
+339       url: data.url,
+340       username: data.username ?? undefined,
+341       password: data.password ?? undefined,
+342     },
+344   return [server] as ServerConnection.Any[]
+}</code></pre>
+              </div>
+              <div class="callout">
+                <strong>通信方式总结</strong>
+                <span>renderer 不直接 fork sidecar。renderer 通过 Electron IPC 问 main 要连接信息，之后用 HTTP 连 <code>http://127.0.0.1:&lt;port&gt;</code> 的 sidecar server。</span>
+              </div>
+            </article>
+          </section>
+        </section>
+
+        <section class="flow-map">
+          <h2 class="section-title">整体跳转图</h2>
+          <div class="flow-grid">
+            <div class="flow-node">
+              <h3>VSCode launch.json</h3>
+              <p>点击运行，先看 <code>preLaunchTask</code>。还没有启动 Electron。</p>
+            </div>
+            <div class="flow-node">
+              <h3>tasks.json</h3>
+              <p>顺序跑 <code>bun install</code> 和 <code>bun run build --sourcemap</code>。</p>
+            </div>
+            <div class="flow-node">
+              <h3>desktop package.json</h3>
+              <p>Bun script lifecycle：<code>prebuild</code> 先于 <code>build</code>。</p>
+            </div>
+            <div class="flow-node">
+              <h3>prebuild.ts</h3>
+              <p>进入 <code>packages/opencode</code>，执行 <code>script/build-node.ts</code>。</p>
+            </div>
+            <div class="flow-node">
+              <h3>build-node.ts</h3>
+              <p><code>src/node.ts</code> 构建为 <code>dist/node/node.js</code>，给 sidecar import。</p>
+            </div>
+            <div class="flow-node">
+              <h3>electron-vite build</h3>
+              <p>CLI 默认加载 <code>electron.vite.config.ts</code>，构建 main/preload/renderer。</p>
+            </div>
+            <div class="flow-node">
+              <h3>VSCode runtimeExecutable</h3>
+              <p>preLaunchTask 完成后启动 <code>electron.exe .</code>。</p>
+            </div>
+            <div class="flow-node last">
+              <h3>Electron main</h3>
+              <p>运行 <code>out/main/index.js</code>，再 fork <code>out/main/sidecar.js</code>。</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="process-map">
+          <h2 class="section-title">进程和通信</h2>
+          <div class="process-grid">
+            <div class="process">
+              <span class="tag">Process 1</span>
+              <h3>VSCode</h3>
+              <p>负责调度 preLaunchTask 和启动 Debug session。</p>
+            </div>
+            <div class="process">
+              <span class="tag">Process 2</span>
+              <h3>PowerShell tasks</h3>
+              <p>执行 <code>bun install</code>、<code>bun run build --sourcemap</code>。</p>
+            </div>
+            <div class="process">
+              <span class="tag">Process 3</span>
+              <h3>Bun / electron-vite</h3>
+              <p>构建 <code>opencode/dist/node</code> 和 <code>desktop/out</code>。</p>
+            </div>
+            <div class="process">
+              <span class="tag">Process 4</span>
+              <h3>Electron main</h3>
+              <p>运行 <code>out/main/index.js</code>，创建窗口，fork sidecar。</p>
+            </div>
+            <div class="process">
+              <span class="tag">Process 5</span>
+              <h3>Electron utility sidecar</h3>
+              <p>运行 <code>out/main/sidecar.js</code>，启动 opencode HTTP server。</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="process-map">
+          <h2 class="section-title">通信矩阵</h2>
+          <table class="matrix">
+            <thead>
+              <tr>
+                <th>方向</th>
+                <th>通信方式</th>
+                <th>代码位置</th>
+                <th>传递内容</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>VSCode -> PowerShell</td>
+                <td>VSCode Task Shell</td>
+                <td><code>.vscode/tasks.json</code></td>
+                <td>执行依赖安装和构建命令。</td>
+              </tr>
+              <tr>
+                <td>VSCode -> Electron main</td>
+                <td>Node Debug launch</td>
+                <td><code>.vscode/launch.json</code></td>
+                <td><code>runtimeExecutable=electron.exe</code>，<code>args=["."]</code>，<code>OPENCODE_CHANNEL=prod</code>。</td>
+              </tr>
+              <tr>
+                <td>main -> sidecar</td>
+                <td><code>utilityProcess.fork</code> + <code>child.postMessage</code></td>
+                <td><code>src/main/server.ts</code></td>
+                <td><code>type=start</code>、host、port、password、userDataPath、needsMigration。</td>
+              </tr>
+              <tr>
+                <td>sidecar -> main</td>
+                <td><code>parentPort.postMessage</code> + stdout/stderr pipe</td>
+                <td><code>src/main/sidecar.ts</code></td>
+                <td><code>sqlite</code> 进度、<code>ready</code>、<code>error</code>、日志输出。</td>
+              </tr>
+              <tr>
+                <td>renderer -> main</td>
+                <td>Electron IPC：<code>ipcRenderer.invoke</code> / <code>ipcMain.handle</code></td>
+                <td><code>src/preload/index.ts</code>、<code>src/main/index.ts</code></td>
+                <td>调用 <code>await-initialization</code>，拿 sidecar 的 url、username、password。</td>
+              </tr>
+              <tr>
+                <td>renderer -> sidecar server</td>
+                <td>HTTP + Basic Auth</td>
+                <td><code>src/renderer/index.tsx</code></td>
+                <td>使用 <code>http://127.0.0.1:&lt;port&gt;</code> 连接本地 opencode server。</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="process-map">
+          <h2 class="section-title">最短结论</h2>
+          <div class="grid two">
+            <div class="mini-card">
+              <h3>构建链路</h3>
+              <p>
+                <code>launch.json preLaunchTask</code> -> <code>tasks.json</code> ->
+                <code>bun run build --sourcemap</code> -> <code>prebuild.ts</code> ->
+                <code>build-node.ts</code> -> <code>electron-vite build</code> ->
+                <code>electron.vite.config.ts</code> -> 生成 <code>out/main/index.js</code> 和 <code>out/main/sidecar.js</code>。
+              </p>
+            </div>
+            <div class="mini-card">
+              <h3>运行链路</h3>
+              <p>
+                <code>preLaunchTask</code> 成功后，VSCode 执行 <code>electron.exe .</code> ->
+                Electron 读 <code>package.json main</code> -> 运行 <code>out/main/index.js</code> ->
+                main 调用 <code>utilityProcess.fork(out/main/sidecar.js)</code> ->
+                sidecar 调 <code>Server.listen()</code>。
+              </p>
+            </div>
+          </div>
+          <p class="footer-note">
+            本页面只解释当前 VSCode “OpenCode Prod: Main Entry” 启动配置。它不是 CLI 的 <code>opencode serve</code> 路线；
+            CLI 路线才会直接经过 <code>packages/opencode/src/index.ts</code> 的 yargs 命令入口。
+          </p>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const buttons = Array.from(document.querySelectorAll(".step-button"))
+      const details = Array.from(document.querySelectorAll(".detail"))
+
+      function showStep(id) {
+        buttons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.step === id)
+        })
+        details.forEach((detail) => {
+          detail.classList.toggle("active", detail.id === `detail-${id}`)
+        })
+      }
+
+      buttons.forEach((button) => {
+        button.addEventListener("click", () => showStep(button.dataset.step))
+      })
+    </script>
+  </body>
+</html>

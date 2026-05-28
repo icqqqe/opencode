@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenCode 学习导师"
+  short_description: "用 C++98 和底层机制读 OpenCode 源码"
+  default_prompt: "Use $learn-opencode-tutor to explain an OpenCode source file with C++98 analogies and runtime-level reading guidance."

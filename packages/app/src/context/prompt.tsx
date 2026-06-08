@@ -5,6 +5,8 @@ import { batch, createMemo, createRoot, getOwner, onCleanup } from "solid-js"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import type { FileSelection } from "@/context/file"
 import { Persist, persisted } from "@/utils/persist"
+import { useServerSDK } from "./server-sdk"
+import type { ServerScope } from "@/utils/server-scope"
 
 interface PartBase {
   content: string
@@ -176,11 +178,11 @@ type PromptCacheEntry = {
   dispose: VoidFunction
 }
 
-function createPromptSession(dir: string, id: string | undefined) {
+function createPromptSession(scope: ServerScope, dir: string, id: string | undefined) {
   const legacy = `${dir}/prompt${id ? "/" + id : ""}.v2`
 
   const [store, setStore, _, ready] = persisted(
-    Persist.scoped(dir, id, "prompt", [legacy]),
+    Persist.serverScoped(scope, dir, id, "prompt", [legacy]),
     createStore<{
       prompt: Prompt
       cursor?: number
@@ -244,6 +246,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
   gate: false,
   init: () => {
     const params = useParams()
+    const serverSDK = useServerSDK()
     const cache = new Map<string, PromptCacheEntry>()
 
     const disposeAll = () => {
@@ -277,7 +280,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
 
       const entry = createRoot(
         (dispose) => ({
-          value: createPromptSession(dir, id),
+          value: createPromptSession(serverSDK.scope, dir, id),
           dispose,
         }),
         owner,

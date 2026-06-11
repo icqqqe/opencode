@@ -50,8 +50,7 @@ async function start(command: StartCommand) {
     prepareProxyEnvironment()
     useSystemCertificates()
     useEnvProxy((error) => console.warn("failed to load proxy environment", error))
-    const { Log, Server } = await import("virtual:opencode-server")
-    await Log.init({ level: "WARN" })
+    const { Server } = await import("virtual:opencode-server")
 
     listener = await Server.listen({
       port: command.port,

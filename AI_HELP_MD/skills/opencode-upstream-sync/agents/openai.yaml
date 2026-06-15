@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenCode Upstream Sync"
+  short_description: "Sync official updates into Windows UI branch."
+  default_prompt: "Use $opencode-upstream-sync to merge official OpenCode dev into work/windows-client-ui while preserving local Windows UI features."

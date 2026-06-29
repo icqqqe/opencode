@@ -1,11 +1,14 @@
 export * as SystemContextBuiltIns from "./builtins"
 
+import { makeLocationNode } from "../effect/app-node"
 import { DateTime, Effect, Layer, Schema } from "effect"
 import { Config } from "../config"
 import { Location } from "../location"
 import { SystemContext } from "./index"
 import { InstructionContext } from "../instruction-context"
 import { SystemContextRegistry } from "./registry"
+import { FSUtil } from "../fs-util"
+import { Global } from "../global"
 
 const builtIns = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -46,3 +49,9 @@ export const layer = Layer.mergeAll(builtIns, InstructionContext.layer.pipe(Laye
 )
 
 export const locationLayer = layer
+
+export const node = makeLocationNode({
+  name: "system-context-builtins",
+  layer,
+  deps: [Location.node, SystemContextRegistry.node, InstructionContext.node, FSUtil.node, Global.node],
+})

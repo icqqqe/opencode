@@ -2,39 +2,46 @@ import { describe, expect, test } from "bun:test"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import path from "path"
 import { Effect, FileSystem, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import { NodeFileSystem } from "@effect/platform-node"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
-import { FSUtil } from "@opencode-ai/core/fs-util"
-import { Config } from "../../src/config/config"
 import { Instruction } from "../../src/session/instruction"
 import type { MessageV2 } from "../../src/session/message-v2"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { Global } from "@opencode-ai/core/global"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
-import { provideInstance, provideTmpdirInstance, testInstanceStoreLayer, tmpdirScoped } from "../fixture/fixture"
+import { provideInstance, provideTmpdirInstance, tmpdirScoped } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { TestConfig } from "../fixture/config"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { LayerNodePlatform } from "@opencode-ai/core/effect/app-node-platform"
+import { InstanceStore } from "@/project/instance-store"
+import { InstanceBootstrap } from "@/project/bootstrap"
+import { Config } from "@/config/config"
 
-const it = testEffect(Layer.mergeAll(CrossSpawnSpawner.defaultLayer, NodeFileSystem.layer, testInstanceStoreLayer))
+const it = testEffect(
+  AppNodeBuilder.build(LayerNode.group([CrossSpawnSpawner.node, LayerNodePlatform.filesystem, InstanceStore.node]), [
+    [
+      InstanceBootstrap.node,
+      Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void })),
+    ],
+  ]),
+)
 
 const instructionLayer = (
   global: Partial<Global.Interface>,
   flags: Partial<RuntimeFlags.Info> = {},
-  config: Partial<Config.Info> = {},
+  config: Config.Info = {},
 ) =>
-  Instruction.layer.pipe(
-    Layer.provide(TestConfig.layer({ get: () => Effect.succeed(config) })),
-    Layer.provide(FSUtil.defaultLayer),
-    Layer.provide(FetchHttpClient.layer),
-    Layer.provide(Global.layerWith(global)),
-    Layer.provide(RuntimeFlags.layer(flags)),
-  )
+  AppNodeBuilder.build(Instruction.node, [
+    [Config.node, Layer.succeed(Config.Service, TestConfig.make({ get: () => Effect.succeed(config) }))],
+    [Global.node, Global.layerWith(global)],
+    [RuntimeFlags.node, RuntimeFlags.layer(flags)],
+  ])
 
 const provideInstruction =
-  (global: Partial<Global.Interface>, flags?: Partial<RuntimeFlags.Info>, config?: Partial<Config.Info>) =>
+  (global: Partial<Global.Interface>, flags?: Partial<RuntimeFlags.Info>, config?: Config.Info) =>
   <A, E, R>(self: Effect.Effect<A, E, R>) =>
     self.pipe(Effect.provide(instructionLayer(global, flags, config)))
 

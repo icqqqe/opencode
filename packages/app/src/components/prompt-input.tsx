@@ -861,8 +861,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
-  // Auto-scroll active command into view when navigating with keyboard
-  createEffect(() => {
+  const scrollSlashActiveIntoView = () => {
     const activeId = slashActive()
     if (!activeId || !slashPopoverRef) return
 
@@ -870,9 +869,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       const element = slashPopoverRef.querySelector(`[data-slash-id="${activeId}"]`)
       element?.scrollIntoView({ block: "nearest", behavior: "smooth" })
     })
-  })
+  }
 
-  createEffect(() => {
+  const scrollSkillActiveIntoView = () => {
     const activeId = skillActive()
     if (!activeId || !skillPopoverRef) return
 
@@ -880,7 +879,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       const element = skillPopoverRef.querySelector(`[data-skill-id="${activeId}"]`)
       element?.scrollIntoView({ block: "nearest", behavior: "smooth" })
     })
-  })
+  }
+
   const selectPopoverActive = () => {
     if (store.popover === "at") {
       const items = atFlat()
@@ -1398,11 +1398,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         }
         if (store.popover === "slash") {
           slashOnKeyDown(event)
+          if (event.key === "ArrowUp" || event.key === "ArrowDown" || ctrlNav) {
+            scrollSlashActiveIntoView()
+          }
           event.preventDefault()
           return
         }
         if (store.popover === "skill") {
           skillOnKeyDown(event)
+          if (event.key === "ArrowUp" || event.key === "ArrowDown" || ctrlNav) {
+            scrollSkillActiveIntoView()
+          }
           event.preventDefault()
           return
         }
@@ -1529,6 +1535,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         setSkillActive={setSkillActive}
         onSkillSelect={handleSkillSelect}
         commandKeybind={command.keybind}
+        commandKeybindParts={command.keybindParts}
+        newLayoutDesigns={props.controls.newLayoutDesigns}
         t={(key) => language.t(key as Parameters<typeof language.t>[0])}
       />
       <Switch>

@@ -200,6 +200,20 @@ code .
 - Bun for Visual Studio Code：用于 Bun 运行时和脚本支持。
 - ESLint / Prettier 可按个人习惯安装，但本项目当前主要按仓库脚本验证。
 
+### 从 GitHub 拉取后直接按 F5
+
+在 Windows 电脑安装好 Git 和 VSCode 后，用 VSCode 打开仓库根目录，直接按 `F5` 并选择 `OpenCode Prod: Main Entry`。不需要先手动执行 `bun install`。
+
+F5 会通过 `.vscode/opencode.ps1` 自动完成：
+
+1. 从系统 PATH、`BUN_LINKS_PATH`、用户 `.bun/bin`、WinGet Links 和 WinGet 实际安装目录寻找可执行的 Bun。
+2. 如果 Bun 不存在且系统有 WinGet，自动安装 Bun；如果 WinGet 也不可用，会在终端显示明确的安装提示。
+3. 使用 Electron 国内镜像执行 `bun install`，并在 Electron 二进制缺失时补跑 `install.js`。
+4. 设置 `OPENCODE_CHANNEL=prod`，构建主进程、preload、renderer 和 sourcemap。
+5. 用仓库内 Electron 启动桌面客户端，并让 VSCode 附加主进程和子进程调试。
+
+首次 F5 需要下载依赖和完成全量构建，耗时会明显长于后续启动。新电脑仍需具备可访问 GitHub、Bun 包源和 Electron 镜像的网络；代理配置由 Windows 系统代理和本项目已有代理逻辑处理。
+
 ### 使用 VSCode Tasks
 
 本仓库已新增 `.vscode/tasks.json`，可在 VSCode 中执行：
@@ -208,6 +222,8 @@ code .
 2. 选择 `opencode: desktop dev` 启动 Electron 客户端开发模式。
 3. 选择 `opencode: desktop build` 编译检查桌面端。
 4. 选择 `opencode: desktop package win` 打 Windows 安装包。
+
+这些 Task 与 F5 共用 `.vscode/opencode.ps1`，不会写死电脑盘符、仓库目录或用户名。
 
 ### 改源码后如何看效果
 

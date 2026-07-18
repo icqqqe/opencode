@@ -9,6 +9,108 @@
 - 只记录事实和工程判断，不记录账号、token、私钥等敏感信息。
 - 本文件只做追踪记录，不代表已经提交到 Git 或推送到 GitHub。
 
+### 官方同步强制规则
+
+本文件同时是唯一的官方同步与冲突解决台账。每次把官方 `dev` 合入 `work/windows-client-ui` 时必须：
+
+1. 在 fetch 或 merge 前阅读本节、长期保护基线和最近一次同步记录。
+2. 记录个人分支提交、官方提交、共同祖先和双方提交数量。
+3. 逐个记录实际冲突文件；不得只写“保留 ours”或“采用 theirs”。
+4. 对每个冲突说明官方改了什么、本地特性是什么、最终如何移植到官方新结构。
+5. 记录没有产生 Git 冲突但为兼容新 API、新类型或文件迁移而修改的文件。
+6. 每次都检查 VSCode F5 基线、依赖安装、受影响 package typecheck、桌面构建和 pre-push 结果。
+7. 即使没有文本冲突，也要追加一条“无冲突”记录，并写明审查过的本地特性。
+8. 本文件、仓库版 sync skill 和本次代码必须统一提交并推送到 `origin/work/windows-client-ui`。
+
+### 长期保护基线
+
+- `.vscode/launch.json`、`.vscode/tasks.json`、`.vscode/opencode.ps1` 提供的新电脑 F5 自举和正式版调试。
+- 中国网络环境可用的 Electron 镜像与缺失二进制补装。
+- Windows 桌面主进程、sidecar、系统代理和本地文件打开行为。
+- prompt 中用 `$` 选择、插入、恢复和显示 skill 的完整链路。
+- Markdown 与工具卡片中的可信本地文件路径解析和打开。
+- `autodiscover_instructions` 等个人配置扩展。
+- 本地模型快照回退、插件运行时桥接等个人分支提交。
+
+保护本地特性不等于冻结旧代码。官方重构同一模块时，应把本地行为移植到官方最新的组件、类型和生命周期上。
+
+## 2026-07-18 - 官方 dev 合并记录与跨电脑 F5 自举
+
+### 背景
+
+个人 `work/windows-client-ui` 分支已合并官方 `dev` 到 `fab213312`。用户要求完整保留本地 Windows/UI 特性、长期记录冲突取舍，并保证其他 Windows 电脑从 GitHub 拉取后可在 VSCode 直接按 F5 运行。
+
+### 同步范围
+
+| 项目 | 提交 |
+| --- | --- |
+| 个人分支同步前 | `a831b080c331681147a0a7aaf7ae1e33dc016884` |
+| 官方 `dev` | `fab213312927ea64cf968832c527206e8c944f9e` |
+| 共同祖先 | `2fe68b5e91abda916cceebe27d9814c345dcb262` |
+| 合并提交 | `9e0d2c4025956014aca54b3480a6815d2a0924ae` |
+
+- 官方侧从共同祖先到目标提交共 `429` 个提交。
+- 个人分支侧从共同祖先到同步前提交共 `35` 个提交。
+- `origin/dev` 与 `upstream/dev` 均指向 `fab213312`，所以本次官方内容一致。
+- 合并方式为 `git merge --no-ff upstream/dev`，保留双方历史。
+- 合并提交已经推送到 `origin/work/windows-client-ui`。
+
+### 实际冲突与解决
+
+| 冲突文件 | 官方变化 | 本地特性 | 最终解决 |
+| --- | --- | --- | --- |
+| `packages/app/src/components/prompt-input.tsx` | 引入新版 composer、project picker、model/agent controls、附件布局和新旧布局分流 | `$` skill popover、skill pill、高亮、详情 Dialog 和请求链路 | 以官方新版 composer 结构为骨架，把 skill 触发、渲染和 Dialog 行为移植到新旧两套布局中，同时保留官方 project/model/agent 控件 |
+| `packages/app/src/components/prompt-input/slash-popover.tsx` | 调整 slash command 菜单属性和渲染结构 | 同一个 popover 还承载独立的 skill 列表模式 | 合并两组 props 和分支渲染，`/` 继续显示命令，`$` 独立显示 skill |
+| `packages/app/src/components/prompt-input/transient-state.ts` | 新增官方 slash menu 瞬态状态 | 本地 skill popover 瞬态状态 | 同时保留两套状态，并增加统一的 `variantOpen` 判断供新版输入框使用 |
+| `packages/app/src/context/prompt.tsx` | Prompt context 改为从新的 state 模块导出类型 | 本地 `SkillPart` 类型 | 保留官方 re-export 结构，并公开 `SkillPart` |
+| `packages/core/src/instruction-context.ts` | 接入新的 `fs.resolve` 和官方 Context 读取方式 | 配置驱动的 instruction context 扩展 | 将本地配置支持移植到官方解析流程，并补齐 `Config.node` 依赖 |
+| `packages/core/src/system-context/builtins.ts` | 官方建立新的 `builtIns` 分层 | 旧分支内有本地 context 注册逻辑 | 采用官方分层并去掉已经过时的重复块；本地配置能力保留在 `instruction-context.ts` |
+| `packages/session-ui/src/components/markdown.tsx` | 更新 Markdown 生命周期和 dispose 行为 | 可信本地文件链接解析与点击打开 | 保留本地路径解析 helpers，并接入官方最新清理生命周期 |
+| `packages/session-ui/src/components/message-part.tsx` | 更新 V2 action/comment 消息显示 | `$skill` metadata 解析、skill chip 和本地文件打开 | 在官方 V2 结构上保留 skill metadata 与文件交互，不回退官方 action/comment 更新 |
+
+### 非冲突兼容修复
+
+- `packages/app/src/context/prompt-state.ts`
+  - 将 `SkillPart` 纳入新的 `ContentPart` 联合类型。
+  - 为 clone 和 equality 补齐 skill 分支。
+- `packages/app/src/components/prompt-input/contracts.ts`
+  - 让新旧布局共用的 contracts 同时支持可选 `newLayoutDesigns`、`variant` 和 `toolbar`。
+- `packages/session-ui/src/v2/components/prompt-input/types.ts`
+  - 增加 V2 skill part，使新版 Prompt 类型能携带本地 `$skill`。
+- `packages/session-ui/src/components/markdown-local-file-link.test.ts`
+  - 官方重构后 Markdown 实现已移动到 `session-ui`，将原来位于 `packages/ui` 的本地路径测试一并迁移，修复全仓 pre-push typecheck 的无效导入。
+
+### 同步验证结果
+
+- 标准 Git 冲突标记扫描通过。
+- `packages/app`: `bun run typecheck` 通过。
+- `packages/core`: `bun run typecheck` 通过。
+- `packages/session-ui`: `bun run typecheck` 通过。
+- `packages/desktop`: `OPENCODE_CHANNEL=prod bun run build` 通过。
+- pre-push 全仓 `bun turbo typecheck`: `30 successful, 30 total`。
+- GitHub 分支 `origin/work/windows-client-ui` 已更新到 `9e0d2c402`。
+
+### 同步后 F5 加固
+
+- 新增 `.vscode/opencode.ps1`，集中处理 Bun 查找、缺失时通过 WinGet 安装、Electron 镜像、依赖安装、Electron 二进制补齐和桌面构建。
+- `.vscode/tasks.json` 的所有桌面任务改为调用该脚本，避免不同 Task 进程之间丢失临时 PATH。
+- F5 的 `PrepareProdDebug` 会在同一进程中依次完成依赖准备和 `prod` sourcemap 构建。
+- `.gitignore` 明确允许提交所需 VSCode 配置和脚本，同时继续忽略个人 `.vscode/settings.json`。
+- 这次 F5、文档和 skill 加固统一随本条记录所在维护提交推送到 `origin/work/windows-client-ui`。
+
+### 验证结果
+
+- F5 对应的 `PrepareProdDebug` 真实执行通过。
+- Bun `1.3.14` 解析成功，`bun install` 无依赖变化。
+- Electron launcher、主进程产物和 sourcemap 均已生成。
+- 桌面 Electron/Vite 生产调试构建退出码为 `0`。
+- 使用与 F5 相同的 Electron executable、工作目录、参数和 `OPENCODE_CHANNEL=prod` 做启动 smoke test，12 秒后主进程仍正常运行，共检测到 9 个本次启动的仓库相关进程。
+- smoke test 结束时仅终止本次新启动的进程，随后确认仓库相关残留进程数为 `0`。
+
+### 工作区保护
+
+同步前发现的两处用户未提交改动保存在 `stash@{0}: codex-before-upstream-sync`，未混入合并提交或本次维护提交。后续恢复前应先查看 stash 内容并确认与当前官方代码是否仍兼容。
+
 ## 2026-05-28 15:38:00 +08:00 - 增加 AGENTS 自动发现开关
 
 ### 背景

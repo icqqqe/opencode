@@ -20,7 +20,7 @@ class File extends Schema.Class<File>("InstructionContext.File")({
 const Files = Schema.Array(File)
 const key = SystemContext.Key.make("core/instructions")
 
-export const layer = Layer.effectDiscard(
+const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const config = yield* Config.Service
@@ -37,26 +37,28 @@ export const layer = Layer.effectDiscard(
         update: (_previous, current) =>
           `These instructions replace all previously loaded ambient instructions.\n\n${render(current)}`,
         removed: () => "Previously loaded instructions no longer apply.",
-      })
+    })
 
     const observe = Effect.fn("InstructionContext.observe")(function* () {
       const entries = yield* config.entries()
       const autodiscover = Config.latest(entries, "autodiscover_instructions") !== false
       const explicit = Config.latest(entries, "instructions") ?? []
-      const start = FSUtil.resolve(location.directory)
-      const stop = FSUtil.resolve(location.project.directory)
+      const start = yield* fs.resolve(location.directory)
+      const stop = yield* fs.resolve(location.project.directory)
       const fromProject = relative(stop, start)
       const insideProject =
         fromProject === "" || (fromProject !== ".." && !fromProject.startsWith(`..${sep}`) && !isAbsolute(fromProject))
       const discovered = new Set(
-        (!autodiscover || Flag.OPENCODE_DISABLE_PROJECT_CONFIG || !insideProject
-          ? []
-          : yield* fs.up({
-              targets: ["AGENTS.md"],
-              start,
-              stop,
-            })
-        ).map(FSUtil.resolve),
+        yield* Effect.forEach(
+          !autodiscover || Flag.OPENCODE_DISABLE_PROJECT_CONFIG || !insideProject
+            ? []
+            : yield* fs.up({
+                targets: ["AGENTS.md"],
+                start,
+                stop,
+              }),
+          fs.resolve,
+        ),
       )
       const configured = yield* Effect.forEach(
         explicit.filter((item) => !item.startsWith("https://") && !item.startsWith("http://")),
@@ -75,8 +77,9 @@ export const layer = Layer.effectDiscard(
         },
         { concurrency: "unbounded" },
       ).pipe(Effect.catch(() => Effect.succeed([] as string[][])))
-      const automatic = autodiscover ? [FSUtil.resolve(join(global.config, "AGENTS.md")), ...discovered] : []
-      const paths = Array.dedupe([...automatic, ...configured.flat().map(FSUtil.resolve)])
+      const automatic = autodiscover ? [yield* fs.resolve(join(global.config, "AGENTS.md")), ...discovered] : []
+      const configuredPaths = yield* Effect.forEach(configured.flat(), fs.resolve)
+      const paths = Array.dedupe([...automatic, ...configuredPaths])
       const files = yield* Effect.forEach(
         paths,
         (path) =>
@@ -114,7 +117,7 @@ export const layer = Layer.effectDiscard(
 export const node = makeLocationNode({
   name: "instruction-context",
   layer,
-  deps: [FSUtil.node, Global.node, Location.node, SystemContextRegistry.node],
+  deps: [Config.node, FSUtil.node, Global.node, Location.node, SystemContextRegistry.node],
 })
 
 function render(files: ReadonlyArray<File>) {

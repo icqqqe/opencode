@@ -139,7 +139,12 @@ function isPromptEqual(promptA: PromptHistoryStoredEntry, promptB: PromptHistory
     if (partA.type === "agent" && partA.name !== (partB.type === "agent" ? partB.name : "")) return false
     if (partA.type === "skill") {
       if (partB.type !== "skill") return false
-      if (partA.name !== partB.name || partA.description !== partB.description || partA.body !== partB.body) {
+      if (
+        partA.name !== partB.name ||
+        partA.description !== partB.description ||
+        partA.location !== partB.location ||
+        partA.body !== partB.body
+      ) {
         return false
       }
     }

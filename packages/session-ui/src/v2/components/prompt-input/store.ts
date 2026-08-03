@@ -8,6 +8,7 @@ import type {
   PromptInputV2Model,
   PromptInputV2PersistedState,
   PromptInputV2Prompt,
+  PromptInputV2SkillPart,
 } from "./types"
 
 export type PromptInputV2StoreTuple = [
@@ -47,6 +48,13 @@ export function createPromptInputV2Store(input: PromptInputV2StoreInput) {
         setStore()("cursor", content.length)
       })
     },
+    addText(content: string) {
+      const cursor = store().cursor ?? promptLength(store().prompt)
+      batch(() => {
+        setStore()("prompt", (prompt) => insertText(prompt, cursor, content))
+        setStore()("cursor", cursor + content.length)
+      })
+    },
     reset() {
       batch(() => {
         setStore()("prompt", [{ type: "text", content: "", start: 0, end: 0 }])
@@ -66,12 +74,12 @@ export function createPromptInputV2Store(input: PromptInputV2StoreInput) {
     removeContext(key: string) {
       setStore()("context", "items", (items) => items.filter((item) => item.key !== key))
     },
-    addMention(mention: PromptInputV2FilePart | PromptInputV2AgentPart) {
+    addMention(mention: PromptInputV2FilePart | PromptInputV2AgentPart | PromptInputV2SkillPart) {
       const text = store()
         .prompt.map((part) => ("content" in part ? part.content : ""))
         .join("")
       const end = store().cursor ?? text.length
-      const start = text.slice(0, end).lastIndexOf("@")
+      const start = text.slice(0, end).lastIndexOf(mention.type === "skill" ? "$" : "@")
       setStore()("prompt", insertMention(store().prompt, start < 0 ? end : start, end, mention))
       setStore()("cursor", (start < 0 ? end : start) + mention.content.length + 1)
     },
@@ -86,11 +94,32 @@ export function createPromptInputV2Store(input: PromptInputV2StoreInput) {
 
 export type PromptInputV2Store = ReturnType<typeof createPromptInputV2Store>
 
+function insertText(prompt: PromptInputV2Prompt, cursor: number, content: string): PromptInputV2Prompt {
+  let position = 0
+  let inserted = false
+  const parts = prompt.flatMap<PromptInputV2Prompt[number]>((part) => {
+    if (part.type === "image") return [part]
+    const start = position
+    position += part.content.length
+    if (inserted) return [part]
+    if (part.type === "text" && cursor >= start && cursor <= position) {
+      inserted = true
+      const offset = cursor - start
+      return [{ ...part, content: part.content.slice(0, offset) + content + part.content.slice(offset) }]
+    }
+    if (cursor > start) return [part]
+    inserted = true
+    return [{ type: "text", content, start: 0, end: 0 }, part]
+  })
+  if (!inserted) parts.push({ type: "text", content, start: 0, end: 0 })
+  return withOffsets(parts)
+}
+
 function insertMention(
   prompt: PromptInputV2Prompt,
   start: number,
   end: number,
-  mention: PromptInputV2FilePart | PromptInputV2AgentPart,
+  mention: PromptInputV2FilePart | PromptInputV2AgentPart | PromptInputV2SkillPart,
 ): PromptInputV2Prompt {
   let position = 0
   const parts = prompt.flatMap<PromptInputV2Prompt[number]>((part) => {
@@ -106,11 +135,19 @@ function insertMention(
       { type: "text" as const, content: ` ${after}`, start: 0, end: 0 },
     ]
   })
+  return withOffsets(parts)
+}
+
+function withOffsets(prompt: PromptInputV2Prompt): PromptInputV2Prompt {
   let offset = 0
-  return parts.map((part) => {
+  return prompt.map((part) => {
     if (part.type === "image") return part
     const next = { ...part, start: offset, end: offset + part.content.length }
     offset = next.end
     return next
   })
+}
+
+function promptLength(prompt: PromptInputV2Prompt) {
+  return prompt.reduce((length, part) => length + ("content" in part ? part.content.length : 0), 0)
 }

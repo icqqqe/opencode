@@ -18,15 +18,18 @@ import type {
   PromptInputV2Option,
   PromptInputV2PersistedState,
   PromptInputV2Prompt,
+  PromptInputV2SkillPart,
   PromptInputV2Suggestion,
 } from "./types"
 import type { PromptInputV2Interaction, PromptInputV2SelectControl } from "./interaction"
+import "./attachments.css"
 
 export type {
   PromptInputV2Attachment,
   PromptInputV2Comment,
   PromptInputV2Option,
   PromptInputV2PersistedState,
+  PromptInputV2SkillPart,
   PromptInputV2Suggestion,
 } from "./types"
 
@@ -36,8 +39,12 @@ export type PromptInputV2Props = {
   controller: PromptInputV2Interaction
   disabled?: boolean
   readOnly?: boolean
+  borderUnderlay?: boolean
   class?: string
   modelControl?: JSX.Element
+  variantControlVisible?: boolean
+  attachKeybind?: string[]
+  attachShortcut?: string
 }
 
 export function PromptInputV2(props: PromptInputV2Props) {
@@ -63,7 +70,7 @@ export function PromptInputV2(props: PromptInputV2Props) {
       localInput = false
       return
     }
-    renderPromptInputV2Editor(editor, parts)
+    renderPromptInputV2Editor(editor, parts, props.controller.openSkill)
   })
 
   return (
@@ -102,8 +109,12 @@ export function PromptInputV2(props: PromptInputV2Props) {
       </Show>
       <form
         data-component="prompt-input-v2"
-        class="group/prompt-input relative min-h-[96px] w-full rounded-xl bg-v2-background-bg-base shadow-[var(--v2-elevation-raised)]"
-        classList={{ "border border-v2-icon-icon-info border-dashed": state.drag === "active" }}
+        data-dock-border-underlay={props.borderUnderlay ? "v2" : undefined}
+        class="group/prompt-input relative min-h-[96px] w-full overflow-clip rounded-xl bg-v2-background-bg-base"
+        classList={{
+          "shadow-[var(--v2-elevation-raised)]": !props.borderUnderlay,
+          "border border-v2-icon-icon-info border-dashed": state.drag === "active",
+        }}
         onSubmit={(event) => {
           event.preventDefault()
           if (!props.disabled) props.controller.submit()
@@ -137,7 +148,7 @@ export function PromptInputV2(props: PromptInputV2Props) {
             ref={(element) => {
               editor = element
               props.controller.setEditor(element)
-              renderPromptInputV2Editor(element, props.controller.parts())
+              renderPromptInputV2Editor(element, props.controller.parts(), props.controller.openSkill)
             }}
             data-component="prompt-input"
             role="textbox"
@@ -149,7 +160,7 @@ export function PromptInputV2(props: PromptInputV2Props) {
             spellcheck={state.mode === "normal"}
             // @ts-expect-error
             autocomplete="off"
-            class="relative z-10 block min-h-[60px] max-h-[180px] w-full overflow-y-auto whitespace-pre-wrap bg-transparent px-4 pt-4 pb-2 text-[13px] font-[440] leading-5 text-v2-text-text-base focus:outline-none empty:before:content-['\200B'] [&_[data-mention=file]]:text-syntax-property [&_[data-mention=agent]]:text-syntax-type [&_[data-mention=reference]]:text-syntax-keyword"
+            class="relative z-10 block min-h-[60px] max-h-[180px] w-full overflow-y-auto whitespace-pre-wrap bg-transparent px-4 pt-4 pb-2 text-[13px] font-[440] leading-5 text-v2-text-text-base focus:outline-none empty:before:content-['\200B'] [&_[data-mention=file]]:text-syntax-property [&_[data-mention=agent]]:text-syntax-type [&_[data-mention=reference]]:text-syntax-keyword [&_[data-mention=skill]]:cursor-pointer [&_[data-mention=skill]]:text-v2-icon-icon-info"
             classList={{ "font-mono!": state.mode === "shell", "opacity-50": props.disabled }}
             onInput={(event) => {
               const cursor = promptInputV2Cursor(event.currentTarget)
@@ -177,7 +188,9 @@ export function PromptInputV2(props: PromptInputV2Props) {
               classList={{ "font-mono!": state.mode === "shell" }}
             >
               {view.placeholder?.() ??
-                (state.mode === "shell" ? "Enter shell command..." : "Ask anything, / for commands, @ for context...")}
+                (state.mode === "shell"
+                  ? "Enter shell command..."
+                  : "Ask anything, / for commands, $ for skills, @ for context...")}
             </div>
           </Show>
         </div>
@@ -192,9 +205,9 @@ export function PromptInputV2(props: PromptInputV2Props) {
             <PromptInputV2AddMenu
               disabled={state.mode === "shell"}
               title="Add images and files"
-              keybind={["Mod", "U"]}
+              keybind={props.attachKeybind ?? ["Mod", "U"]}
               attachLabel="Images and files"
-              attachShortcut="Mod+U"
+              attachShortcut={props.attachShortcut ?? "Mod+U"}
               commandsLabel="Commands"
               contextLabel="Context"
               shellLabel="Shell command"
@@ -203,20 +216,20 @@ export function PromptInputV2(props: PromptInputV2Props) {
               onContext={props.controller.openContext}
               onShell={props.controller.openShell}
             />
-            <Show when={view.agent}>
+            <Show when={view.agent} keyed>
               {(control) => (
-                <PromptInputV2ConfiguredSelect title="Choose agent" keybind={["Mod", "."]} control={control()} />
+                <PromptInputV2ConfiguredSelect title="Choose agent" keybind={["Mod", "."]} control={control} />
               )}
             </Show>
             <Show
               when={props.modelControl}
               fallback={
-                <Show when={view.model}>
+                <Show when={view.model} keyed>
                   {(control) => (
                     <PromptInputV2ConfiguredSelect
                       title="Choose model"
                       keybind={["Mod", "M"]}
-                      control={control()}
+                      control={control}
                       model
                     />
                   )}
@@ -225,10 +238,14 @@ export function PromptInputV2(props: PromptInputV2Props) {
             >
               {props.modelControl}
             </Show>
-            <Show when={view.variant}>
+            <Show when={(props.variantControlVisible ?? true) && view.variant} keyed>
               {(control) => (
-                <Show when={control().options().length > 1}>
-                  <PromptInputV2ConfiguredSelect title="Choose model variant" control={control()} />
+                <Show when={control.options().length > 1}>
+                  <PromptInputV2ConfiguredSelect
+                    title="Choose model variant"
+                    keybind={["Shift", "Mod", "D"]}
+                    control={control}
+                  />
                 </Show>
               )}
             </Show>
@@ -248,7 +265,11 @@ export function PromptInputV2(props: PromptInputV2Props) {
   )
 }
 
-function renderPromptInputV2Editor(editor: HTMLDivElement, prompt: PromptInputV2Prompt) {
+function renderPromptInputV2Editor(
+  editor: HTMLDivElement,
+  prompt: PromptInputV2Prompt,
+  openSkill?: (skill: PromptInputV2SkillPart) => void,
+) {
   const active = document.activeElement === editor
   editor.replaceChildren(
     ...prompt.flatMap<Node>((part) => {
@@ -260,6 +281,17 @@ function renderPromptInputV2Editor(editor: HTMLDivElement, prompt: PromptInputV2
       mention.dataset.mention =
         part.type === "file" && part.mime === "application/x-directory" ? "reference" : part.type
       if (part.type === "agent") mention.dataset.name = part.name
+      if (part.type === "skill") {
+        mention.dataset.name = part.name
+        mention.dataset.description = part.description ?? ""
+        if (part.location) mention.dataset.location = part.location
+        mention.dataset.body = part.body
+        mention.addEventListener("click", (event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          openSkill?.(part)
+        })
+      }
       if (part.type === "file") {
         mention.dataset.path = part.path
         if (part.mime) mention.dataset.mime = part.mime
@@ -295,6 +327,20 @@ function parsePromptInputV2Editor(editor: HTMLDivElement) {
       parts.push({
         type: "agent",
         name: element.dataset.name ?? content.slice(1),
+        content,
+        start: position,
+        end: position + content.length,
+      })
+      position += content.length
+      return
+    }
+    if (element.dataset.mention === "skill") {
+      parts.push({
+        type: "skill",
+        name: element.dataset.name ?? content.slice(1),
+        description: element.dataset.description || undefined,
+        ...(element.dataset.location ? { location: element.dataset.location } : {}),
+        body: element.dataset.body ?? "",
         content,
         start: position,
         end: position + content.length,
@@ -366,7 +412,7 @@ export function PromptInputV2Attachments(props: {
 }) {
   return (
     <Show when={props.attachments.length > 0 || (props.comments?.length ?? 0) > 0}>
-      <div data-slot="prompt-attachments" class="relative">
+      <div data-component="prompt-input-v2-attachments" data-slot="prompt-attachments" class="relative">
         <div
           data-slot="prompt-attachments-scroll"
           class="flex flex-nowrap gap-2 overflow-x-auto no-scrollbar px-2 pt-2 pb-1"
@@ -432,8 +478,14 @@ export function PromptInputV2Attachments(props: {
             )}
           </For>
         </div>
-        <div class="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-[linear-gradient(to_right,var(--v2-background-bg-base),transparent)]" />
-        <div class="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-[linear-gradient(to_left,var(--v2-background-bg-base),transparent)]" />
+        <div
+          data-slot="prompt-attachments-fade-left"
+          class="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-[linear-gradient(to_right,var(--v2-background-bg-base),transparent)]"
+        />
+        <div
+          data-slot="prompt-attachments-fade-right"
+          class="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-[linear-gradient(to_left,var(--v2-background-bg-base),transparent)]"
+        />
       </div>
     </Show>
   )
@@ -507,7 +559,7 @@ function PromptInputV2ConfiguredSelect(props: {
   return (
     <PromptInputV2Select
       title={props.title}
-      keybind={props.keybind}
+      keybind={props.control.keybind?.() ?? props.keybind}
       options={props.control.options()}
       current={current()}
       currentIcon={
@@ -531,36 +583,46 @@ export function PromptInputV2Select(props: {
   onSelect: (id: string) => void
 }) {
   return (
-    <MenuV2 gutter={6} modal={false} placement="top-start" onOpenChange={props.onOpenChange}>
-      <MenuV2.Trigger
-        as={ButtonV2}
-        variant="ghost-muted"
-        size="normal"
-        class={`max-w-[220px] justify-start ![font-weight:440] ${props.class ?? ""}`}
-        title={keybindTitle(props.title, props.keybind)}
-      >
-        {props.currentIcon}
-        <span class="truncate capitalize leading-5">
-          {props.options.find((option) => option.id === props.current)?.label ?? props.current}
-        </span>
-        <span class="-ml-0.5 -mr-1 flex shrink-0">
-          <IconV2 name="chevron-down" />
-        </span>
-      </MenuV2.Trigger>
-      <MenuV2.Portal>
-        <MenuV2.Content>
-          <MenuV2.RadioGroup value={props.current} onChange={props.onSelect}>
-            <For each={props.options}>
-              {(option) => (
-                <MenuV2.RadioItem value={option.id} class="capitalize" closeOnSelect>
-                  {option.label}
-                </MenuV2.RadioItem>
-              )}
-            </For>
-          </MenuV2.RadioGroup>
-        </MenuV2.Content>
-      </MenuV2.Portal>
-    </MenuV2>
+    <TooltipV2
+      placement="top"
+      value={
+        <>
+          {props.title}
+          <KeybindV2 keys={props.keybind ?? []} variant="neutral" />
+        </>
+      }
+    >
+      <MenuV2 gutter={6} modal={false} placement="top-start" onOpenChange={props.onOpenChange}>
+        <MenuV2.Trigger
+          as={ButtonV2}
+          variant="ghost-muted"
+          size="normal"
+          class={`max-w-[220px] justify-start ![font-weight:440] ${props.class ?? ""}`}
+          aria-label={props.title}
+        >
+          {props.currentIcon}
+          <span class="truncate capitalize leading-5">
+            {props.options.find((option) => option.id === props.current)?.label ?? props.current}
+          </span>
+          <span class="-ml-0.5 -mr-1 flex shrink-0">
+            <IconV2 name="chevron-down" />
+          </span>
+        </MenuV2.Trigger>
+        <MenuV2.Portal>
+          <MenuV2.Content>
+            <MenuV2.RadioGroup value={props.current} onChange={props.onSelect}>
+              <For each={props.options}>
+                {(option) => (
+                  <MenuV2.RadioItem value={option.id} class="capitalize" closeOnSelect>
+                    {option.label}
+                  </MenuV2.RadioItem>
+                )}
+              </For>
+            </MenuV2.RadioGroup>
+          </MenuV2.Content>
+        </MenuV2.Portal>
+      </MenuV2>
+    </TooltipV2>
   )
 }
 
@@ -682,9 +744,4 @@ function PromptInputV2SuggestionIcon(props: { item: PromptInputV2Suggestion }) {
       class="size-4 shrink-0"
     />
   )
-}
-
-function keybindTitle(label: string, keybind?: string[]) {
-  if (!keybind?.length) return label
-  return `${label} (${keybind.join("+")})`
 }

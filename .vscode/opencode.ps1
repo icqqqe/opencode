@@ -84,6 +84,98 @@ function Resolve-Bun {
   throw "WinGet could not provide a working Bun executable (exit code $wingetExitCode)."
 }
 
+function Test-CompatibleNodeVersion {
+  param([string]$Version)
+
+  $match = [regex]::Match($Version, '^v?(\d+)\.(\d+)\.(\d+)')
+  if (-not $match.Success) {
+    return $false
+  }
+
+  $major = [int]$match.Groups[1].Value
+  $minor = [int]$match.Groups[2].Value
+  if ($major -gt 22) {
+    return $true
+  }
+  if ($major -eq 22) {
+    return $minor -ge 12
+  }
+  if ($major -eq 20) {
+    return $minor -ge 19
+  }
+  return $false
+}
+
+function Get-WorkingNode {
+  $nodeCandidates = [System.Collections.Generic.List[string]]::new()
+  $nodeCommand = Get-Command 'node.exe' -ErrorAction SilentlyContinue
+  if ($nodeCommand -and $nodeCommand.Source) {
+    $nodeCandidates.Add($nodeCommand.Source)
+  }
+
+  if ($env:NVM_HOME -and (Test-Path -LiteralPath $env:NVM_HOME -PathType Container)) {
+    Get-ChildItem -LiteralPath $env:NVM_HOME -Directory -Filter 'v*' -ErrorAction SilentlyContinue |
+      Sort-Object Name -Descending |
+      ForEach-Object { $nodeCandidates.Add((Join-Path $_.FullName 'node.exe')) }
+  }
+
+  if ($env:NVM_SYMLINK) {
+    $nodeCandidates.Add((Join-Path $env:NVM_SYMLINK 'node.exe'))
+  }
+
+  if ($env:LOCALAPPDATA) {
+    $nodeCandidates.Add((Join-Path $env:LOCALAPPDATA 'Programs\nodejs\node.exe'))
+    $nodeCandidates.Add((Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\node.exe'))
+  }
+
+  if ($env:ProgramFiles) {
+    $nodeCandidates.Add((Join-Path $env:ProgramFiles 'nodejs\node.exe'))
+  }
+
+  foreach ($candidate in $nodeCandidates | Select-Object -Unique) {
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+      continue
+    }
+
+    try {
+      $version = (& $candidate '--version' 2>$null | Select-Object -First 1)
+      if ($version -and (Test-CompatibleNodeVersion -Version $version)) {
+        return [PSCustomObject]@{
+          Path = (Resolve-Path -LiteralPath $candidate).Path
+          Version = [string]$version
+        }
+      }
+    }
+    catch {
+      continue
+    }
+  }
+
+  return $null
+}
+
+function Resolve-Node {
+  $result = Get-WorkingNode
+  if ($result) {
+    return $result
+  }
+
+  $winget = Get-Command 'winget.exe' -ErrorAction SilentlyContinue
+  if (-not $winget) {
+    throw 'Node.js 20.19+ or 22.12+ is required by Vite 7, and WinGet is unavailable. Install a current Node.js LTS release, reopen VSCode, and press F5 again.'
+  }
+
+  Write-Host 'A Vite 7 compatible Node.js runtime was not found. Installing Node.js LTS with WinGet...'
+  & $winget.Source install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements | Out-Host
+  $wingetExitCode = $LASTEXITCODE
+  $result = Get-WorkingNode
+  if ($result) {
+    return $result
+  }
+
+  throw "WinGet could not provide a Vite 7 compatible Node.js runtime (exit code $wingetExitCode)."
+}
+
 function Invoke-Bun {
   param(
     [string]$WorkingDirectory,
@@ -129,6 +221,7 @@ function Install-Dependencies {
 function Build-Desktop {
   param([switch]$ProdDebug)
 
+  $env:NODE_OPTIONS = (($env:NODE_OPTIONS, '--max-old-space-size=8192') -ne '' -join ' ').Trim()
   if ($ProdDebug) {
     $env:OPENCODE_CHANNEL = "prod"
     Invoke-Bun -WorkingDirectory $desktopRoot -BunArguments @("run", "build", "--sourcemap")
@@ -141,6 +234,10 @@ function Build-Desktop {
 $bun = Resolve-Bun
 $script:bunExecutable = $bun.Path
 Write-Host "Using Bun $($bun.Version) from $($bun.Path)"
+$node = Resolve-Node
+$nodeDirectory = Split-Path -Parent $node.Path
+$env:PATH = $nodeDirectory + [System.IO.Path]::PathSeparator + $env:PATH
+Write-Host "Using Node.js $($node.Version) from $($node.Path)"
 
 switch ($action) {
   "Install" {

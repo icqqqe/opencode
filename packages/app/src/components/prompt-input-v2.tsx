@@ -1,11 +1,12 @@
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { Dialog } from "@opencode-ai/ui/dialog"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
 import { Icon } from "@opencode-ai/ui/v2/icon"
 import { KeybindV2 } from "@opencode-ai/ui/v2/keybind-v2"
 import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
-import type { Prompt, ReferenceInfo } from "@opencode-ai/sdk/v2/client"
+import type { ReferenceInfo } from "@opencode-ai/sdk/v2/client"
 import { createEffect, createMemo, on, Show } from "solid-js"
 import { ModelSelectorPopoverV2 } from "@/components/dialog-select-model"
 import { DialogSelectModelUnpaidV2 } from "@/components/dialog-select-model-unpaid-v2"
@@ -36,11 +37,10 @@ import {
 export type PromptInputV2ComposerProps = {
   class?: string
   controller: PromptInputV2ComposerController
-  edit?: PromptInputProps["edit"]
-  onEditLoaded?: PromptInputProps["onEditLoaded"]
+  borderUnderlay?: boolean
 }
 
-export type PromptInputV2ControllerProps = Omit<PromptInputProps, "class" | "edit" | "onEditLoaded" | "submission">
+export type PromptInputV2ControllerProps = Omit<PromptInputProps, "class" | "submission">
 export type PromptInputV2ComposerController = PromptInputV2Interaction & {
   readonly model: PromptInputProps["controls"]["model"]
 }
@@ -50,14 +50,15 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
   const command = useCommand()
   const language = useLanguage()
 
-  useCommands(props)
-  useEditHandler(props)
-
   return (
     <div class="flex flex-col gap-3">
       <PromptInputV2
         controller={props.controller}
+        borderUnderlay={props.borderUnderlay}
         class={props.class}
+        variantControlVisible={!props.controller.model.loading}
+        attachKeybind={command.keybindParts("file.attach")}
+        attachShortcut={command.keybind("file.attach")}
         modelControl={
           <PromptInputV2ModelControl
             loading={props.controller.model.loading}
@@ -76,70 +77,6 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
       />
     </div>
   )
-}
-
-const useEditHandler = (props: PromptInputV2ComposerProps) => {
-  const prompt = usePrompt()
-
-  createEffect(
-    on(
-      () => props.edit?.id,
-      (id) => {
-        const edit = props.edit
-        if (!id || !edit) return
-        prompt.context.items().forEach((item) => prompt.context.remove(item.key))
-        edit.context.forEach((item) =>
-          prompt.context.add({
-            type: item.type,
-            path: item.path,
-            selection: item.selection,
-            comment: item.comment,
-            commentID: item.commentID,
-            commentOrigin: item.commentOrigin,
-            preview: item.preview,
-          }),
-        )
-        props.controller.dispatch({ type: "mode.normal" })
-        props.controller.resetHistory()
-        prompt.set(edit.prompt, promptLength(edit.prompt))
-        props.controller.restoreFocus()
-        props.onEditLoaded?.()
-      },
-      { defer: true },
-    ),
-  )
-}
-
-const useCommands = (props: PromptInputV2ComposerProps) => {
-  const command = useCommand()
-  const language = useLanguage()
-
-  command.register("prompt-input", () => [
-    {
-      id: "file.attach",
-      title: language.t("prompt.action.attachFile"),
-      category: language.t("command.category.file"),
-      keybind: "mod+u",
-      disabled: props.controller.state.mode !== "normal",
-      onSelect: () => props.controller.attach(),
-    },
-    {
-      id: "prompt.mode.shell",
-      title: language.t("command.prompt.mode.shell"),
-      category: language.t("command.category.session"),
-      keybind: "mod+shift+x",
-      disabled: props.controller.state.mode === "shell",
-      onSelect: () => props.controller.dispatch({ type: "mode.shell" }),
-    },
-    {
-      id: "prompt.mode.normal",
-      title: language.t("command.prompt.mode.normal"),
-      category: language.t("command.category.session"),
-      keybind: "mod+shift+e",
-      disabled: props.controller.state.mode === "normal",
-      onSelect: () => props.controller.dispatch({ type: "mode.normal" }),
-    },
-  ])
 }
 
 export function usePromptInputV2Controller(props: PromptInputV2ControllerProps): PromptInputV2ComposerController {
@@ -306,7 +243,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
   )
   const resources = createMemo(() =>
     Object.values(sync().data.mcp_resource).map((resource) => ({
-      id: `resource:${resource.client}:${resource.uri}`,
+      id: `resource:${resource.server}:${resource.uri}`,
       kind: "resource" as const,
       label: `@${resource.name}`,
       path: resource.uri,
@@ -323,7 +260,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
         source: {
           type: "resource" as const,
           text: { value: `@${resource.name}`, start: 0, end: resource.name.length + 1 },
-          clientName: resource.client,
+          clientName: resource.server,
           uri: resource.uri,
         },
       },
@@ -379,6 +316,26 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       keybind: command.keybindParts(item.id),
     })),
   )
+  const skills = createMemo<PromptInputV2Suggestion[]>(() =>
+    sync().data.skill.map((skill) => ({
+      id: `skill.${skill.name}`,
+      kind: "skill",
+      label: `$${skill.name}`,
+      trigger: skill.name,
+      title: skill.name,
+      description: skill.description,
+      mention: {
+        type: "skill",
+        name: skill.name,
+        description: skill.description,
+        location: skill.location,
+        body: skill.content,
+        content: `$${skill.name}`,
+        start: 0,
+        end: 0,
+      },
+    })),
+  )
   const variants = createMemo(() => ["default", ...props.controls.model.selection.variant.list()])
   const controller = createPromptInputV2Controller({
     store: () => prompt.capture().store,
@@ -396,6 +353,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
     },
     commands,
     context,
+    skills,
     searchContextFiles: async (query) =>
       (await files.searchFilesAndDirectories(query)).map((path) => ({
         id: `file:${path}`,
@@ -409,6 +367,20 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
     },
     openAttachment: (attachment) =>
       dialog.show(() => <ImagePreview src={attachment.dataUrl} alt={attachment.filename} />),
+    openSkill(skill) {
+      dialog.show(() => (
+        <Dialog title={`$${skill.name}`} size="large" class="w-full max-w-[760px] mx-auto">
+          <div class="flex min-h-0 flex-1 flex-col gap-3 px-6 pb-5">
+            <Show when={skill.description}>
+              <p class="shrink-0 text-14-regular text-text-base">{skill.description}</p>
+            </Show>
+            <pre class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border border-border-weak-base bg-surface-base p-3 text-12-regular text-text-strong">
+              <code>{skill.body}</code>
+            </pre>
+          </div>
+        </Dialog>
+      ))
+    },
     openContext(key) {
       const item = controller.contextItem(key)
       if (item) openComment(item, props, sync, layout, files, comments)
@@ -432,6 +404,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
           title: language.t("prompt.toast.pasteUnsupported.title"),
           description: language.t("prompt.toast.pasteUnsupported.description"),
         }),
+      duplicate: () => showToast({ title: language.t("prompt.toast.attachmentDuplicate.title") }),
       onError: (error) =>
         showToast({
           variant: "error",
@@ -443,18 +416,21 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
     },
     view: {
       placeholder: designPlaceholder,
-      agent:
-        props.controls.agents.visible && props.controls.agents.options.length > 0
+      get agent() {
+        return props.controls.agents.visible && props.controls.agents.options.length > 0
           ? {
               options: () => props.controls.agents.options.map((name) => ({ id: name, label: name })),
               current: () => props.controls.agents.current,
-              onSelect: props.controls.agents.select,
+              onSelect: (value: string) => props.controls.agents.select(value),
+              keybind: () => command.keybindParts("agent.cycle"),
             }
-          : undefined,
+          : undefined
+      },
       variant: {
         options: () => variants().map((value) => ({ id: value, label: value })),
         current: () => props.controls.model.selection.variant.current() ?? "default",
         onSelect: (value) => props.controls.model.selection.variant.set(value === "default" ? undefined : value),
+        keybind: () => command.keybindParts("model.variant.cycle"),
       },
       submit: {
         stopping,
@@ -465,6 +441,62 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
     },
   })
   Object.defineProperty(controller, "model", { get: () => props.controls.model })
+
+  command.register("prompt-input", () => [
+    {
+      id: "file.attach",
+      title: language.t("prompt.action.attachFile"),
+      category: language.t("command.category.file"),
+      keybind: "mod+u",
+      disabled: controller.state.mode !== "normal",
+      onSelect: () => controller.attach(),
+    },
+    {
+      id: "prompt.mode.shell",
+      title: language.t("command.prompt.mode.shell"),
+      category: language.t("command.category.session"),
+      keybind: "mod+shift+x",
+      disabled: controller.state.mode === "shell",
+      onSelect: () => controller.dispatch({ type: "mode.shell" }),
+    },
+    {
+      id: "prompt.mode.normal",
+      title: language.t("command.prompt.mode.normal"),
+      category: language.t("command.category.session"),
+      keybind: "mod+shift+e",
+      disabled: controller.state.mode === "normal",
+      onSelect: () => controller.dispatch({ type: "mode.normal" }),
+    },
+  ])
+
+  createEffect(
+    on(
+      () => props.edit?.id,
+      (id) => {
+        const edit = props.edit
+        if (!id || !edit) return
+        prompt.context.items().forEach((item) => prompt.context.remove(item.key))
+        edit.context.forEach((item) =>
+          prompt.context.add({
+            type: item.type,
+            path: item.path,
+            selection: item.selection,
+            comment: item.comment,
+            commentID: item.commentID,
+            commentOrigin: item.commentOrigin,
+            preview: item.preview,
+          }),
+        )
+        controller.dispatch({ type: "mode.normal" })
+        controller.resetHistory()
+        prompt.set(edit.prompt, promptLength(edit.prompt))
+        controller.restoreFocus()
+        props.onEditLoaded?.()
+      },
+      { defer: true },
+    ),
+  )
+
   return controller as PromptInputV2ComposerController
 }
 
@@ -514,6 +546,7 @@ function PromptInputV2ModelControl(props: {
           fallback={
             <ButtonV2
               data-action="prompt-model"
+              data-control-type="dialog"
               variant="ghost-muted"
               size="normal"
               class="min-w-0 max-w-[220px] justify-start ![font-weight:440] group"
@@ -527,19 +560,22 @@ function PromptInputV2ModelControl(props: {
         >
           <ModelSelectorPopoverV2
             model={props.model}
-            triggerAs={ButtonV2}
-            triggerProps={{
-              variant: "ghost-muted",
-              size: "normal",
-              style: { height: "28px" },
-              class: "min-w-0 max-w-[220px] justify-start ![font-weight:440] group",
-              classList: { "animate-in fade-in": shouldAnimate() },
-              "data-action": "prompt-model",
-            }}
+            trigger={(triggerProps) => (
+              <ButtonV2
+                {...triggerProps}
+                variant="ghost-muted"
+                size="normal"
+                style={{ height: "28px" }}
+                class="min-w-0 max-w-[220px] justify-start ![font-weight:440] group"
+                classList={{ "animate-in fade-in": shouldAnimate() }}
+                data-action="prompt-model"
+                data-control-type="popover"
+              >
+                {content()}
+              </ButtonV2>
+            )}
             onClose={props.onClose}
-          >
-            {content()}
-          </ModelSelectorPopoverV2>
+          />
         </Show>
       </TooltipV2>
     </Show>

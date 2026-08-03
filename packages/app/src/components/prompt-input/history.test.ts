@@ -41,6 +41,26 @@ describe("prompt-input history", () => {
     expect(dedupedComments).toBe(commentsOnly)
   })
 
+  test("keeps same-name skills from different base directories as distinct history entries", () => {
+    const skill = (location: string): Prompt => [
+      {
+        type: "skill",
+        name: "planner",
+        description: "Plan work",
+        location,
+        body: "# Planner",
+        content: "$planner",
+        start: 0,
+        end: 8,
+      },
+    ]
+    const first = prependHistoryEntry([], skill("C:/skills/one/SKILL.md"))
+    const second = prependHistoryEntry(first, skill("C:/skills/two/SKILL.md"))
+
+    expect(second).toHaveLength(2)
+    expect(normalizePromptHistoryEntry(second[0]!).prompt).toEqual(skill("C:/skills/two/SKILL.md"))
+  })
+
   test("navigatePromptHistory restores saved prompt when moving down from newest", () => {
     const entries = [text("third"), text("second"), text("first")]
     const up = navigatePromptHistory({

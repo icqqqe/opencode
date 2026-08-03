@@ -34,6 +34,7 @@ export interface SkillCommand {
   trigger: string
   title: string
   description?: string
+  location: string
   template: string
 }
 

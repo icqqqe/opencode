@@ -1,5 +1,11 @@
-import { describe, expect, test } from "bun:test"
-import { resolveMarkdownLocalFileLinkTarget } from "./markdown"
+import { beforeAll, describe, expect, mock, test } from "bun:test"
+
+let resolveMarkdownLocalFileLinkTarget: typeof import("./markdown").resolveMarkdownLocalFileLinkTarget
+
+beforeAll(async () => {
+  mock.module("./markdown-shiki.worker.ts?worker&url", () => ({ default: "" }))
+  resolveMarkdownLocalFileLinkTarget = (await import("./markdown")).resolveMarkdownLocalFileLinkTarget
+})
 
 describe("markdown local file links", () => {
   const directory = "E:\\workspace\\game\\ts_workspace"

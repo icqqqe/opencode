@@ -400,6 +400,7 @@ describe("buildRequestParts", () => {
         type: "skill",
         name: "planner",
         description: "Plan carefully",
+        location: "C:\\Users\\dev\\.codex\\skills\\planner\\SKILL.md",
         body: "# Planner\nUse this workflow.",
         content: "$planner",
         start: 4,
@@ -410,6 +411,7 @@ describe("buildRequestParts", () => {
         type: "skill",
         name: "planner",
         description: "Plan carefully",
+        location: "C:\\Users\\dev\\.codex\\skills\\planner\\SKILL.md",
         body: "# Planner\nUse this workflow.",
         content: "$planner",
         start: 18,
@@ -432,6 +434,17 @@ describe("buildRequestParts", () => {
     )
 
     expect(result.requestParts[0]).toMatchObject({ type: "text", text: "use $planner then $planner" })
+    expect(result.metadata.opencodePrompt.textParts[0]).toEqual({ text: "use $planner then $planner" })
+    expect(result.metadata.opencodePrompt.textParts[1]).toMatchObject({
+      synthetic: true,
+      metadata: {
+        opencodeSkill: {
+          name: "planner",
+          location: "C:\\Users\\dev\\.codex\\skills\\planner\\SKILL.md",
+        },
+      },
+    })
+    expect(result.metadata.opencodePrompt.textParts[1]).not.toHaveProperty("text")
     expect(syntheticSkills).toHaveLength(1)
     expect(syntheticSkills[0]).toMatchObject({
       type: "text",
@@ -440,6 +453,7 @@ describe("buildRequestParts", () => {
         opencodeSkill: {
           name: "planner",
           description: "Plan carefully",
+          location: "C:\\Users\\dev\\.codex\\skills\\planner\\SKILL.md",
           content: "# Planner\nUse this workflow.",
           source: { value: "$planner", start: 4, end: 12 },
           sources: [
@@ -452,6 +466,82 @@ describe("buildRequestParts", () => {
     if (syntheticSkills[0]?.type === "text") {
       expect(syntheticSkills[0].text).toContain('<skill_content name="planner">')
       expect(syntheticSkills[0].text).toContain("# Planner")
+      expect(syntheticSkills[0].text).toContain("Base directory for this skill: C:/Users/dev/.codex/skills/planner")
+      expect(syntheticSkills[0].text).toContain(
+        "Relative paths in this skill (e.g., scripts/, references/) are relative to this base directory.",
+      )
     }
+  })
+
+  test("preserves root skill directories and skips built-in locations", () => {
+    const prompt: Prompt = [
+      {
+        type: "skill",
+        name: "root",
+        location: "/SKILL.md",
+        body: "Root skill",
+        content: "$root",
+        start: 0,
+        end: 5,
+      },
+      {
+        type: "skill",
+        name: "drive",
+        location: "C:\\SKILL.md",
+        body: "Drive skill",
+        content: "$drive",
+        start: 6,
+        end: 12,
+      },
+      {
+        type: "skill",
+        name: "built-in",
+        location: "<built-in>",
+        body: "Built-in skill",
+        content: "$built-in",
+        start: 13,
+        end: 22,
+      },
+    ]
+
+    const result = buildRequestParts({
+      prompt,
+      context: [],
+      images: [],
+      text: "$root $drive $built-in",
+      messageID: "msg_skill_roots",
+      sessionID: "ses_skill_roots",
+      sessionDirectory: "/repo",
+    })
+    const skills = result.requestParts.filter((part) => part.type === "text" && part.synthetic)
+
+    expect(skills[0]?.type === "text" ? skills[0].text : "").toContain("Base directory for this skill: /")
+    expect(skills[1]?.type === "text" ? skills[1].text : "").toContain("Base directory for this skill: C:/")
+    expect(skills[2]?.type === "text" ? skills[2].text : "").not.toContain("Base directory for this skill:")
+  })
+
+  test("keeps persisted skill mentions without a location usable", () => {
+    const result = buildRequestParts({
+      prompt: [
+        {
+          type: "skill",
+          name: "legacy",
+          body: "Legacy skill",
+          content: "$legacy",
+          start: 0,
+          end: 7,
+        },
+      ],
+      context: [],
+      images: [],
+      text: "$legacy",
+      messageID: "msg_legacy_skill",
+      sessionID: "ses_legacy_skill",
+      sessionDirectory: "/repo",
+    })
+    const skill = result.requestParts.find((part) => part.type === "text" && part.synthetic)
+
+    expect(skill?.type === "text" ? skill.text : "").toContain("Legacy skill")
+    expect(skill?.type === "text" ? skill.text : "").not.toContain("Base directory for this skill:")
   })
 })

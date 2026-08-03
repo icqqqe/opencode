@@ -10,6 +10,7 @@ import type {
   PromptInputV2HistoryEntry,
   PromptInputV2Option,
   PromptInputV2PersistedState,
+  PromptInputV2SkillPart,
   PromptInputV2Suggestion,
 } from "./types"
 import {
@@ -23,6 +24,7 @@ export type PromptInputV2SelectControl = {
   options: Accessor<PromptInputV2Option[]>
   current: Accessor<string>
   onSelect: (id: string) => void
+  keybind?: Accessor<string[]>
 }
 
 export type PromptInputV2ViewConfig = {
@@ -59,9 +61,11 @@ export function createPromptInputV2Controller(input: {
   history?: PromptInputV2History
   commands: Accessor<PromptInputV2Suggestion[]>
   context: Accessor<PromptInputV2Suggestion[]>
+  skills?: Accessor<PromptInputV2Suggestion[]>
   searchContextFiles: (query: string) => PromptInputV2Suggestion[] | Promise<PromptInputV2Suggestion[]>
   openAttachment?: (attachment: PromptInputV2Attachment) => void
   openContext?: (key: string) => void
+  openSkill?: (skill: PromptInputV2SkillPart) => void
   onContextRemove?: (item: PromptInputV2Comment) => void
   onEditor?: (element: HTMLElement) => void
   onSuggestionSelect?: (item: PromptInputV2Suggestion) => (() => void) | void
@@ -77,13 +81,11 @@ export function createPromptInputV2Controller(input: {
   }
   function addPart(part: PromptInputV2PersistedState["prompt"][number]) {
     if (part.type === "image") return false
-    if (part.type === "file" || part.type === "agent") {
+    if (part.type === "file" || part.type === "agent" || part.type === "skill") {
       draft.addMention(part)
       return true
     }
-    const text = draft.state.prompt.map((item) => ("content" in item ? item.content : "")).join("")
-    const cursor = draft.state.cursor ?? text.length
-    draft.setText(text.slice(0, cursor) + part.content + text.slice(cursor))
+    draft.addText(part.content)
     return true
   }
   const attachments = input.attachments
@@ -136,7 +138,16 @@ export function createPromptInputV2Controller(input: {
     key: (item) => item.id,
     filterKeys: ["trigger", "title"],
   })
-  const list = () => (state.popover.type === "context" ? contextList : commandList)
+  const skillList = useFilteredList<PromptInputV2Suggestion>({
+    items: () => input.skills?.() ?? [],
+    key: (item) => item.id,
+    filterKeys: ["trigger", "title"],
+  })
+  const list = () => {
+    if (state.popover.type === "context") return contextList
+    if (state.popover.type === "skill") return skillList
+    return commandList
+  }
   const suggestions = () => list().flat()
 
   const execute = (command: PromptInputV2InteractionCommand) => {
@@ -149,7 +160,9 @@ export function createPromptInputV2Controller(input: {
       return
     }
     if (command.type === "popover.filter") {
-      ;(command.popover === "command" ? commandList : contextList).onInput(command.query)
+      ;(command.popover === "command" ? commandList : command.popover === "skill" ? skillList : contextList).onInput(
+        command.query,
+      )
       return
     }
     if (command.type === "suggestion.select") {
@@ -163,21 +176,24 @@ export function createPromptInputV2Controller(input: {
   function dispatch(event: PromptInputV2InteractionEvent) {
     const mode = state.mode
     const result = transitionPromptInputV2(state, event, draft.state)
-    setState(reconcile(result.state))
-    result.commands.forEach(execute)
-    if (mode !== result.state.mode) {
-      if (result.state.mode === "shell") input.view.shell?.onOpen()
-      if (result.state.mode === "normal") input.view.shell?.onClose()
-    }
+    const action = event.type === "popover.select" ? input.onSuggestionSelect?.(event.item) : undefined
     if (event.type === "popover.select") {
-      const action = input.onSuggestionSelect?.(event.item)
-      if (!action) return result.handled
-      if (event.item.kind === "command") {
+      if (!action || state.popover.type !== "command-menu") result.commands.forEach(execute)
+      if (action && event.item.kind === "command" && state.popover.type !== "command-menu") {
         draft.setPrompt(
           draft.state.prompt.filter((part): part is PromptInputV2Attachment => part.type === "image"),
           0,
         )
       }
+    }
+    setState(reconcile(result.state))
+    if (event.type !== "popover.select") result.commands.forEach(execute)
+    if (mode !== result.state.mode) {
+      if (result.state.mode === "shell") input.view.shell?.onOpen()
+      if (result.state.mode === "normal") input.view.shell?.onClose()
+    }
+    if (event.type === "popover.select") {
+      if (!action) return result.handled
       action()
     }
     return result.handled
@@ -321,6 +337,9 @@ export function createPromptInputV2Controller(input: {
     },
     openAttachment(attachment: PromptInputV2Attachment) {
       input.openAttachment?.(attachment)
+    },
+    openSkill(skill: PromptInputV2SkillPart) {
+      input.openSkill?.(skill)
     },
     removeAttachment(id: string) {
       draft.removeAttachment(id)

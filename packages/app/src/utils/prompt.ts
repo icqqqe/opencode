@@ -29,6 +29,7 @@ type Inline =
       value: string
       name: string
       description?: string
+      location?: string
       body: string
     }
 
@@ -51,27 +52,39 @@ function selectionFromFileUrl(url: string): Extract<Inline, { type: "file" }>["s
   }
 }
 
-function skillFromMetadata(metadata: unknown): Extract<Inline, { type: "skill" }> | undefined {
-  if (!isRecord(metadata)) return
-  const skill = metadata.opencodeSkill
-  if (!isRecord(skill)) return
-  const source = skill.source
+function skillSource(source: unknown) {
   if (!isRecord(source)) return
-  if (typeof skill.name !== "string") return
-  if (typeof skill.content !== "string") return
   if (typeof source.value !== "string") return
   if (typeof source.start !== "number") return
   if (typeof source.end !== "number") return
-  if (skill.description !== undefined && typeof skill.description !== "string") return
-  return {
-    type: "skill",
+  return { value: source.value, start: source.start, end: source.end }
+}
+
+function skillsFromMetadata(metadata: unknown): Extract<Inline, { type: "skill" }>[] {
+  if (!isRecord(metadata)) return []
+  const skill = metadata.opencodeSkill
+  if (!isRecord(skill)) return []
+  if (typeof skill.name !== "string") return []
+  if (typeof skill.content !== "string") return []
+  if (skill.description !== undefined && typeof skill.description !== "string") return []
+  if (skill.location !== undefined && typeof skill.location !== "string") return []
+  const reference = {
     name: skill.name,
     description: skill.description,
+    ...(skill.location ? { location: skill.location } : {}),
     body: skill.content,
-    value: source.value,
-    start: source.start,
-    end: source.end,
   }
+  const source = skillSource(skill.source)
+  const sources = Array.isArray(skill.sources)
+    ? skill.sources.map(skillSource).filter((item): item is NonNullable<typeof item> => !!item)
+    : []
+  return (sources.length > 0 ? sources : source ? [source] : []).map((item) => ({
+    type: "skill",
+    ...reference,
+    value: item.value,
+    start: item.start,
+    end: item.end,
+  }))
 }
 
 function textPartValue(parts: Part[]) {
@@ -149,8 +162,7 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
     }
 
     if (part.type === "text" && part.synthetic) {
-      const skill = skillFromMetadata(part.metadata)
-      if (skill) inline.push(skill)
+      inline.push(...skillsFromMetadata(part.metadata))
     }
 
     if (part.type === "agent") {
@@ -220,6 +232,7 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
       type: "skill",
       name: item.name,
       description: item.description,
+      ...(item.location ? { location: item.location } : {}),
       body: item.body,
       content,
       start: position,

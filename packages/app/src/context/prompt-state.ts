@@ -35,6 +35,7 @@ export interface SkillPart extends PartBase {
   type: "skill"
   name: string
   description?: string
+  location?: string
   body: string
 }
 
@@ -112,6 +113,7 @@ function isPartEqual(partA: ContentPart, partB: ContentPart) {
         partB.type === "skill" &&
         partA.name === partB.name &&
         partA.description === partB.description &&
+        partA.location === partB.location &&
         partA.body === partB.body
       )
     case "image":

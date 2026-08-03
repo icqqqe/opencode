@@ -1,3 +1,4 @@
+import type { JsonValue } from "@opencode-ai/client/promise"
 import { getFilename } from "@opencode-ai/core/util/path"
 import { type AgentPartInput, type FilePartInput, type Part, type TextPartInput } from "@opencode-ai/sdk/v2/client"
 import type { FileSelection } from "@/context/file"
@@ -53,14 +54,59 @@ const isFileAttachment = (part: Prompt[number]): part is FileAttachmentPart => p
 const isAgentAttachment = (part: Prompt[number]): part is AgentPart => part.type === "agent"
 const isSkillAttachment = (part: Prompt[number]): part is SkillPart => part.type === "skill"
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value)
+}
+
+function jsonValue(value: unknown): JsonValue | undefined {
+  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {
+    return value
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item): JsonValue[] => {
+      const result = jsonValue(item)
+      if (result === undefined) return []
+      return [result]
+    })
+  }
+  if (!isRecord(value)) return
+  return jsonObject(value)
+}
+
+function jsonObject(value: Record<string, unknown>): Record<string, JsonValue> {
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, item]): [string, JsonValue][] => {
+      const result = jsonValue(item)
+      if (result === undefined) return []
+      return [[key, result]]
+    }),
+  )
+}
+
+function skillBaseDirectory(location?: string) {
+  if (!location) return
+  const normalized = location.replace(/\\/g, "/").replace(/\/+$/, "")
+  if (!normalized || normalized === "<built-in>") return
+  const index = normalized.lastIndexOf("/")
+  if (index === 0) return "/"
+  if (index < 0) return
+  const directory = normalized.slice(0, index)
+  if (/^[A-Za-z]:$/.test(directory)) return `${directory}/`
+  return directory
+}
+
 function skillPromptText(skill: SkillPart) {
-  return [
-    `<skill_content name="${skill.name}">`,
-    `# Skill: ${skill.name}`,
-    "",
-    skill.body.trim(),
-    "</skill_content>",
-  ].join("\n")
+  const content = [`<skill_content name="${skill.name}">`, `# Skill: ${skill.name}`, "", skill.body.trim()]
+  const directory = skillBaseDirectory(skill.location)
+  if (directory) {
+    content.push(
+      "",
+      `Base directory for this skill: ${directory}`,
+      "Relative paths in this skill (e.g., scripts/, references/) are relative to this base directory.",
+    )
+  }
+  content.push("</skill_content>")
+  return content.join("\n")
 }
 
 const toOptimisticPart = (part: PromptRequestPart, sessionID: string, messageID: string): Part => {
@@ -100,13 +146,15 @@ const toOptimisticPart = (part: PromptRequestPart, sessionID: string, messageID:
 }
 
 export function buildRequestParts(input: BuildRequestPartsInput) {
-  const requestParts: PromptRequestPart[] = [
-    {
-      id: Identifier.ascending("part"),
-      type: "text",
-      text: input.text,
-    },
-  ]
+  const requestParts: PromptRequestPart[] = input.text.trim()
+    ? [
+        {
+          id: Identifier.ascending("part"),
+          type: "text",
+          text: input.text,
+        },
+      ]
+    : []
 
   const files = input.prompt.filter(isFileAttachment).map((attachment) => {
     const path = absolute(input.sessionDirectory, attachment.path)
@@ -228,6 +276,7 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
         opencodeSkill: {
           name: item.attachment.name,
           description: item.attachment.description,
+          ...(item.attachment.location ? { location: item.attachment.location } : {}),
           content: item.attachment.body,
           source: item.sources[0],
           sources: item.sources,
@@ -251,5 +300,20 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
   return {
     requestParts,
     optimisticParts: requestParts.map((part) => toOptimisticPart(part, input.sessionID, input.messageID)),
+    metadata: {
+      opencodePrompt: {
+        textParts: requestParts.flatMap((part) => {
+          if (part.type !== "text") return []
+          return [
+            jsonObject({
+              ...(part.synthetic && part.metadata ? {} : { text: part.text }),
+              ...(part.synthetic === undefined ? {} : { synthetic: part.synthetic }),
+              ...(part.ignored === undefined ? {} : { ignored: part.ignored }),
+              ...(part.metadata === undefined ? {} : { metadata: part.metadata }),
+            }),
+          ]
+        }),
+      },
+    } satisfies Record<string, JsonValue>,
   }
 }

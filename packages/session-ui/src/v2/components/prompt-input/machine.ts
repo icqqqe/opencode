@@ -5,6 +5,7 @@ export type PromptInputV2InteractionState = {
   popover:
     | { type: "closed" }
     | { type: "context"; query: string; activeID?: string }
+    | { type: "skill"; query: string; activeID?: string }
     | { type: "command-inline"; query: string; activeID?: string }
     | { type: "command-menu"; query: string; activeID?: string }
   drag: "idle" | "active"
@@ -35,7 +36,7 @@ export type PromptInputV2InteractionEvent =
 export type PromptInputV2InteractionCommand =
   | { type: "draft.setText"; value: string }
   | { type: "mention.add"; item: PromptInputV2Suggestion }
-  | { type: "popover.filter"; popover: "command" | "context"; query: string }
+  | { type: "popover.filter"; popover: "command" | "context" | "skill"; query: string }
   | { type: "suggestion.select"; id: string }
   | { type: "focus.editor" }
   | { type: "focus.command-search" }
@@ -61,7 +62,7 @@ export function transitionPromptInputV2(
   event: PromptInputV2InteractionEvent,
   persisted: PromptInputV2PersistedState,
 ): PromptInputV2Transition {
-  if (event.type === "input.changed") return inputChanged(state, event.value, event.persist !== false)
+  if (event.type === "input.changed") return inputChanged(state, event.value, event.persist !== false, persisted.cursor)
   if (event.type === "commands.open") return openCommands(state, persisted)
   if (event.type === "context.open") return openContext(state, persisted)
   if (event.type === "popover.query") return queryChanged(state, event.value)
@@ -81,14 +82,19 @@ export function transitionPromptInputV2(
   return changed({ ...state, focus: "external" })
 }
 
-function inputChanged(state: PromptInputV2InteractionState, value: string, persist: boolean): PromptInputV2Transition {
+function inputChanged(
+  state: PromptInputV2InteractionState,
+  value: string,
+  persist: boolean,
+  cursor: number | undefined,
+): PromptInputV2Transition {
   const setText: PromptInputV2InteractionCommand[] = persist ? [{ type: "draft.setText", value }] : []
   if (state.mode === "normal" && value === "!") {
     return changed({ ...state, mode: "shell", popover: { type: "closed" }, focus: "editor" }, [
       { type: "draft.setText", value: "" },
     ])
   }
-  const context = value.match(/(?:^|\s)@([^\s@]*)$/)
+  const context = value.slice(0, cursor ?? value.length).match(/(?:^|\s)@([^\s@]*)$/)
   if (context) {
     const query = context[1] ?? ""
     return changed({ ...state, popover: { type: "context", query }, focus: "editor" }, [
@@ -97,7 +103,16 @@ function inputChanged(state: PromptInputV2InteractionState, value: string, persi
     ])
   }
 
-  const command = value.match(/^\/([^\s/]*)$/)
+  const skill = value.slice(0, cursor ?? value.length).match(/\$([^\s$]*)$/)
+  if (state.mode === "normal" && skill) {
+    const query = skill[1] ?? ""
+    return changed({ ...state, popover: { type: "skill", query }, focus: "editor" }, [
+      ...setText,
+      { type: "popover.filter", popover: "skill", query },
+    ])
+  }
+
+  const command = value.match(/^\/(\S*)$/)
   if (command) {
     const query = command[1] ?? ""
     return changed({ ...state, popover: { type: "command-inline", query }, focus: "editor" }, [
@@ -142,7 +157,7 @@ function openContext(
 
 function queryChanged(state: PromptInputV2InteractionState, query: string): PromptInputV2Transition {
   if (state.popover.type === "closed") return unchanged(state)
-  const popover = state.popover.type === "context" ? "context" : "command"
+  const popover = state.popover.type === "context" ? "context" : state.popover.type === "skill" ? "skill" : "command"
   return changed({ ...state, popover: { ...state.popover, query, activeID: undefined } }, [
     { type: "popover.filter", popover, query },
   ])
@@ -235,7 +250,7 @@ function populated(persisted: PromptInputV2PersistedState) {
 }
 
 function replaceTrigger(value: string, trigger: "@" | "/", replacement: string) {
-  const index = value.lastIndexOf(trigger)
+  const index = trigger === "/" ? value.indexOf(trigger) : value.lastIndexOf(trigger)
   return index < 0 ? replacement : value.slice(0, index) + replacement
 }
 

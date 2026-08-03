@@ -56,6 +56,64 @@ describe("prompt input v2 store", () => {
     expect(prompt.state.cursor).toBe(7)
   })
 
+  test("inserts text without flattening structured mentions", () => {
+    const [state, setState] = createStore<PromptInputV2PersistedState>({
+      prompt: [
+        { type: "text", content: "A ", start: 0, end: 2 },
+        { type: "file", path: "one", content: "@one", start: 2, end: 6 },
+        { type: "text", content: " B", start: 6, end: 8 },
+      ],
+      cursor: 2,
+      context: { items: [] },
+    })
+    const prompt = createPromptInputV2Store([state, setState])
+
+    prompt.addText("X\nY")
+
+    expect(prompt.state.prompt).toEqual([
+      { type: "text", content: "A X\nY", start: 0, end: 5 },
+      { type: "file", path: "one", content: "@one", start: 5, end: 9 },
+      { type: "text", content: " B", start: 9, end: 11 },
+    ])
+    expect(prompt.state.cursor).toBe(5)
+  })
+
+  test("replaces a dollar trigger with a structured skill mention", () => {
+    const [state, setState] = createStore<PromptInputV2PersistedState>({
+      prompt: [{ type: "text", content: "use $pla", start: 0, end: 8 }],
+      cursor: 8,
+      context: { items: [] },
+    })
+    const prompt = createPromptInputV2Store([state, setState])
+
+    prompt.addMention({
+      type: "skill",
+      name: "planner",
+      description: "Plan work",
+      location: "C:\\Users\\dev\\.codex\\skills\\planner\\SKILL.md",
+      body: "# Planner",
+      content: "$planner",
+      start: 0,
+      end: 0,
+    })
+
+    expect(prompt.state.prompt).toEqual([
+      { type: "text", content: "use ", start: 0, end: 4 },
+      {
+        type: "skill",
+        name: "planner",
+        description: "Plan work",
+        location: "C:\\Users\\dev\\.codex\\skills\\planner\\SKILL.md",
+        body: "# Planner",
+        content: "$planner",
+        start: 4,
+        end: 12,
+      },
+      { type: "text", content: " ", start: 12, end: 13 },
+    ])
+    expect(prompt.state.cursor).toBe(13)
+  })
+
   test("mutates context, attachments, and model through shared actions", () => {
     const prompt = createPromptStore()
     const context = { key: "file:src/index.ts", type: "file" as const, path: "src/index.ts" }

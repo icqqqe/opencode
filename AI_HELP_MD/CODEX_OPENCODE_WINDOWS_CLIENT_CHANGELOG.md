@@ -34,6 +34,150 @@
 
 保护本地特性不等于冻结旧代码。官方重构同一模块时，应把本地行为移植到官方最新的组件、类型和生命周期上。
 
+## 2026-08-03 - 同步官方 dev 并迁移 Windows/Skill 能力到 V2
+
+### 背景
+
+用户已在 GitHub 网页把个人仓库的 `dev` 同步到官方最新状态，随后要求把该官方状态合入 `work/windows-client-ui`，保留个人 Windows 桌面端和 `$ skill` 修改，同时接入官方的新功能。本次先将本地工作分支快进到 `origin/work/windows-client-ui`，再以 `origin/dev` 为官方来源执行真实双父 merge。
+
+### 同步范围
+
+| 项目 | 提交 |
+| --- | --- |
+| 个人分支同步前 | `7f46211fb57631c559218a7c87dc2b70caed6469` |
+| 官方 `origin/dev` | `1882c33827cf0ce5c948b69ab5a87ed8f6790cf8` |
+| 官方 `upstream/dev` | `1882c33827cf0ce5c948b69ab5a87ed8f6790cf8` |
+| 共同祖先 | `fab213312927ea64cf968832c527206e8c944f9e` |
+| 合并提交 | `99faaf3a4768c67aa170bb1247200749be92157e` |
+
+- 共同祖先之后个人分支有 `37` 个提交，官方侧有 `222` 个提交。
+- `origin/dev` 与 `upstream/dev` 完全一致，因此采用用户已在网页同步好的 `origin/dev` 不会遗漏官方提交。
+- 使用 `git merge --no-ff --no-commit origin/dev`，最终提交有两个父节点，未压平或伪造官方历史。
+- 合并提交相对第一父节点共变更 `412` 个文件，`22749` 行新增、`7568` 行删除；完整文件级 changelist 以 `git show --name-status 99faaf3a4768c67aa170bb1247200749be92157e` 为准。
+
+### 实际 Git 冲突
+
+| 冲突文件 | 官方变化 | 本地特性 | 最终解决 |
+| --- | --- | --- | --- |
+| `packages/app/src/components/prompt-input.tsx` | 官方继续重构 legacy composer，命令和 skill 数据改为 location-scoped 独立来源，并采用新的 `DockShellForm` 骨架 | `$` skill popover、pill、高亮、详情 Dialog、请求注入与恢复链路 | 以官方最新 composer 骨架为准；命令读取 `data.command`，skill 独立读取 `data.skill`；把 `$` 触发、skill pill、Dialog 和 `location` 传递迁移到新结构 |
+
+本次只有上述一个文本冲突。解决后 `git ls-files -u` 为空，标准冲突标记扫描无命中。
+
+### 人工兼容 Changelist（29 个文件）
+
+#### Windows F5 自举（1）
+
+- `.vscode/opencode.ps1`
+  - 官方升级到 Vite 7 后，增加 Node engine 检测：接受 `^20.19.0` 或 `>=22.12.0`。
+  - 在当前 Node、NVM 安装目录、NVM symlink、LocalAppData 和 Program Files 中寻找兼容 Node；缺失时用 WinGet 安装 LTS。
+  - 构建阶段追加 `--max-old-space-size=8192`，避免 renderer sourcemap 构建超过默认 4 GB heap。
+
+#### V1/V2 Skill 数据源和输入入口（10）
+
+- `packages/app/src/components/prompt-input.tsx`
+- `packages/app/src/components/prompt-input-v2.tsx`
+- `packages/app/src/components/prompt-input/slash-popover.tsx`
+- `packages/app/src/context/prompt-state.ts`
+- `packages/app/src/context/global-sync/bootstrap.ts`
+- `packages/app/src/context/global-sync/bootstrap.test.ts`
+- `packages/app/src/context/global-sync/child-store.ts`
+- `packages/app/src/context/global-sync/event-reducer.test.ts`
+- `packages/app/src/context/global-sync/types.ts`
+- `packages/app/src/context/server-sync.tsx`
+
+具体处理：V2 调用 location-scoped `api.skill.list(...)`，V1 调用 `legacy.app.skills(...)`；V1 slash command 过滤旧 `source === skill` 项；`skill.updated` 同步刷新 command/skill；缺失 skill id 时回退到 name；`SkillPart.location` 保持可选以兼容旧草稿和 history。
+
+#### 请求构造、持久化和历史恢复（10）
+
+- `packages/app/src/components/prompt-input/build-request-parts.ts`
+- `packages/app/src/components/prompt-input/build-request-parts.test.ts`
+- `packages/app/src/components/prompt-input/submit.ts`
+- `packages/app/src/components/prompt-input/submit.test.ts`
+- `packages/app/src/components/prompt-input/history.ts`
+- `packages/app/src/components/prompt-input/history.test.ts`
+- `packages/app/src/utils/prompt.ts`
+- `packages/app/src/utils/prompt.test.ts`
+- `packages/app/src/utils/session-message.ts`
+- `packages/app/src/utils/session-message.test.ts`
+
+具体处理：
+
+- 同一个 skill 重复引用时只向模型注入一次完整正文，但保留全部引用位置。
+- metadata 记录 skill `location` 和原始 prompt text parts；消息投影、reload、edit、undo 能还原全部 `$skill` 引用，不把 synthetic 展开正文重复显示给用户。
+- skill base directory 支持 Windows 路径、`/`、盘符根目录和 `<built-in>`；相对脚本/引用路径仍以 skill 目录为基准。
+- prompt history 比较纳入 `location`，避免不同目录下同名 skill 被错误去重。
+- 按官方新 `JsonValue` 合同递归归一化持久化 metadata，并剔除 `undefined`；未用 `any` 或类型断言绕过检查。
+- `submit.test.ts` 保留真实 `server-sync` 导出再覆盖测试 hook，避免 Bun 全局 mock 污染官方 bootstrap 测试。
+
+#### 官方 V2 Session UI Skill composer（8）
+
+- `packages/session-ui/src/v2/components/prompt-input/types.ts`
+- `packages/session-ui/src/v2/components/prompt-input/store.ts`
+- `packages/session-ui/src/v2/components/prompt-input/store.test.ts`
+- `packages/session-ui/src/v2/components/prompt-input/machine.ts`
+- `packages/session-ui/src/v2/components/prompt-input/machine.test.ts`
+- `packages/session-ui/src/v2/components/prompt-input/interaction.ts`
+- `packages/session-ui/src/v2/components/prompt-input/index.tsx`
+- `packages/session-ui/src/components/markdown-local-file-link.test.ts`
+
+以上共 7 个 V2 composer 文件加 1 个 Markdown 测试文件。V2 新会话和现有会话均支持 `$` suggestion、结构化 mention、键盘选择、DOM 往返、skill pill 点击详情和 `$ for skills` placeholder；shell 模式的 `echo $PATH` 不会误触发 skill。Markdown 测试显式模拟 Vite worker URL，并在 Solid/Happy DOM 条件下验证本地文件链接。
+
+### 自动合并后做过语义复核的重点文件
+
+- `packages/app/src/components/prompt-input/build-request-parts.ts`
+- `packages/app/src/components/prompt-input/submit.ts`
+- `packages/app/src/pages/directory-layout.tsx`
+- `packages/desktop/src/main/index.ts`
+- `packages/session-ui/src/components/message-part.css`
+- `packages/session-ui/src/components/message-part.tsx`
+- `packages/session-ui/src/context/data.tsx`
+
+复核结论：Windows V1/V2 sidecar 和系统代理初始化顺序保留；本地文件/HTTP 外链仍分别走可信本地打开和官方外链安全通道；Skill metadata、用户短文本和官方 V2 message 投影契约兼容。
+
+### 官方新增、迁移和删除
+
+- 官方 workspace 版本从 `1.18.3` 升到 `1.18.11`，引入 location-scoped V2 client、V1 compatibility 层、新 home/session controller 拆分、background CLI、外链安全处理、窗口全屏同步、新 toast 实现及多组回归测试。
+- 官方删除 5 个旧文件，未恢复：
+  - `packages/app/src/components/link.tsx`（改由 `external-link.tsx` 和 platform 外链流程承担）。
+  - `packages/app/src/components/session/session-new-design-view.tsx`（迁移到 `pages/new-session/*`）。
+  - `packages/app/src/utils/notification-click.ts` 与对应测试（并入 notification/platform/entry 流程）。
+  - `packages/desktop/src/main/markdown.ts`（旧 parseMarkdown IPC 移除）。
+- 保留官方生成和 vendored 结果：`packages/app/vendor/opencode-ai-client-1.17.13-v2.tgz`、`packages/sdk/js/src/v2/gen/types.gen.ts`、`packages/sdk/openapi.json`、Console migration/snapshot。
+- 本地兼容代码没有修改公共 Protocol/Server `HttpApi`，因此没有额外手改或重新生成 SDK。
+- 保留官方依赖与 patch 更新，包括 Mistral、dnd-kit、MCP SDK 和 Solid patch。官方 Mistral patch 自身包含有意义的尾随空格，整批 `git diff --cached --check` 只报告这些 patch payload 行，未擅自清理以免改变补丁语义；人工源码 `git diff --check` 通过。
+
+### 依赖、F5 和构建验证
+
+- Bun：`1.3.14`。
+- 首次 F5 准备安装了官方新增依赖；后续 `bun install` 显示无变化，`bun.lock` 没有本地二次漂移。
+- 早期验证暴露两个环境问题：默认 Node 18.16 下 Vite 7 缺少 `crypto.hash`；默认 4 GB heap 在 renderer sourcemap 构建时 OOM。
+- 自举脚本首次寻找兼容 Node 时通过 WinGet 安装了 OpenJS Node LTS `24.18.1`；修正 NVM 非当前版本探测后，最终构建选择已有 NVM Node `24.11.1`。该选择只修改脚本进程 PATH，不切换用户全局 NVM 当前版本。
+- F5 对应命令 `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\.vscode\opencode.ps1 PrepareProdDebug` 最终退出码 `0`。
+- 正式版 sourcemap 构建通过：main `25.43s`、preload `17ms`、renderer `17.59s`；仅保留官方已有的 eval、dynamic chunk 和 preload script 警告。
+
+### 测试与类型检查
+
+- App 定向回归：`57 passed, 0 failed`。
+- Session UI 定向回归：`26 passed, 0 failed`。
+- Desktop Electron Builder 与 external URL：`11 passed, 0 failed`。
+- `packages/app`: `bun typecheck` 通过。
+- `packages/session-ui`: `bun typecheck` 通过。
+- `packages/desktop`: `bun typecheck` 通过。
+- 全仓 `bun typecheck`: `30 successful, 30 total`。
+- Windows 默认 checkout 会把 App/Enterprise 的 `custom-elements.d.ts` Git symlink 展开成一行目标路径；全仓检查时临时展开为真实声明文件，检查后精确恢复，未进入提交。
+
+### Skill 双份同步与工作区保护
+
+- 仓库版和安装版 `opencode-upstream-sync/SKILL.md` SHA256 均为 `1828879EDB762DFFCBD3B700D06AB775E4D41A6128606E8C7BCE04941BFE13B4`。
+- 仓库版和安装版 `agents/openai.yaml` SHA256 均为 `28D4D13E327ED51FDABA5F14B9FEC66B2DC8C70A178E833E1C28E531FF2F88A9`。
+- 同步前工作树干净，stash 为空；没有混入用户未提交改动。
+
+### 提交与推送
+
+- 主 merge commit：`99faaf3a4768c67aa170bb1247200749be92157e`，提交说明 `chore: 同步官方 dev 到 Windows 客户端分支`。
+- 本条记录使用独立 `docs: 记录 2026-08-03 官方同步` 提交，避免 changelog 自引用提交 hash。
+- 两个提交统一推送到 `origin/work/windows-client-ui`。
+
 ## 2026-07-18 - 官方 dev 合并记录与跨电脑 F5 自举
 
 ### 背景

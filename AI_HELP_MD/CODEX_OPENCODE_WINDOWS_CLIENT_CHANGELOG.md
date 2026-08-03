@@ -34,6 +34,45 @@
 
 保护本地特性不等于冻结旧代码。官方重构同一模块时，应把本地行为移植到官方最新的组件、类型和生命周期上。
 
+## 2026-08-03 - 纠正双栈策略并恢复旧布局 Skill、Provider 和模型
+
+### 背景与纠正结论
+
+提交 `a15a8c7e39` 将同时暴露 V1/V2 健康接口的桌面 sidecar 整体判为 V2。重新启动后发现当前 sidecar 只实现了部分 V2 API，导致所有目录重载出现 `UnsupportedContentType`、`request.settings.temperature` 空引用、模型控件空白和设置页误显示“没有已连接的提供商”。用户当前主要使用旧布局，因此本次恢复双栈 sidecar 的 V1 主路径，同时保留真正纯 V2 服务的识别能力。
+
+API Key 没有被删除：`C:\Users\Administrator\.local\share\opencode\auth.json` 最后修改时间仍为 `2026-05-26 20:51:45`，只读检查确认 provider ID 仍包含 `deepseek`、`google`，没有读取或输出 Key 内容。
+
+### 运行时证据
+
+- 主进程日志明确记录 sidecar `version: 'v1'`。
+- 当前 sidecar 的 `/api/health` 与 `/global/health` 都返回 200，但 V2 `/api/model/default` 返回 `200 text/html` 的 renderer 页面；vendored V2 client 期待 JSON，因此抛出 `UnsupportedContentType`。
+- V2 `/api/agent` 的 `request` 只有 `headers/body`，而旧 client adapter 仍读取 `request.settings.temperature`，因此产生空引用。
+- V2 `/api/provider` 只返回 1 个 provider；V1 `/provider` 返回完整 catalog，已连接项包含 `google`、`deepseek`、`opencode`。
+- 重启后的同一 sidecar 上，`ts_workspace`、`xls_config`、`opencode_chat` 三个目录的 V1 `/agent`、`/skill`、`/provider` 均返回 200；其中 `ts_workspace` 返回 7 个 Agent、24 个 Skill。
+
+因此不在 Agent/Model normalize 层伪造缺失字段，也不为不存在的 V2 路由打补丁；根修复是避免把部分 V2 的双栈 sidecar 整体切到 V2。
+
+### Changelist（3 个文件）
+
+- `packages/app/src/utils/server-protocol.ts`
+  - legacy 健康接口可用时立即选择 V1，恢复旧布局完整的 Skill、Agent、Provider、模型与原凭据读取链。
+  - legacy 不可用时，保留历史 `pid` V2 识别，并用 `/api/location` 返回 shape 区分正式纯 V2 与过渡 V1。
+  - 两个健康接口都不可用时保持原有默认 V2 行为。
+- `packages/app/src/utils/server-protocol.test.ts`
+  - 覆盖双栈优先 V1、历史含 `pid` 的 V2、正式纯 V2 location 能力、过渡 V1 和双健康端点缺失。
+- `AI_HELP_MD/CODEX_OPENCODE_WINDOWS_CLIENT_CHANGELOG.md`
+  - 记录上一策略的回归、凭据仍在的证据、V1/V2 现场响应差异和本次纠正文件清单。
+
+公司工程目录只做只读 API/文件存在性检查，没有修改 `E:\workspace\game\ts_workspace` 或 `E:\workspace\game\xls_config` 的任何文件。
+
+### 验证结果
+
+- `packages/app`: 协议检测定向测试 `5 passed, 0 failed`。
+- `packages/desktop`: Node `24.11.1` 下 `bun run build` 完整通过，main、preload、renderer 均成功生成。
+- 当前 sidecar 实机只读验证：三个目录 V1 Agent/Skill/Provider 均为 200；`ts_workspace` 为 7 Agent、24 Skill，完整 Provider catalog 的 connected 包含 `google`、`deepseek`、`opencode`。
+- 仓库根目录：`git diff --check` 通过，仅有 Windows LF/CRLF 提示。
+- 正式 `bun typecheck` 仍受仓库既有的 Windows Git symlink checkout 问题影响；本次没有修改或提交该 symlink 文件。
+
 ## 2026-08-03 - 修复双栈协议误判导致目录 Skill 和模型缺失
 
 ### 背景与现场结论

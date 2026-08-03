@@ -34,6 +34,43 @@
 
 保护本地特性不等于冻结旧代码。官方重构同一模块时，应把本地行为移植到官方最新的组件、类型和生命周期上。
 
+## 2026-08-03 - 修复双栈协议误判导致目录 Skill 和模型缺失
+
+### 背景与现场结论
+
+同步官方 `dev` 后，`E:\workspace\game\ts_workspace` 根目录中的旧布局出现 `$` 无 Skill、Agent/Provider 加载 499、模型列表不显示已绑定 DeepSeek；同一桌面端中的 OpenCode 仓库和 `xls_config` 正常。
+
+只读排查确认公司工程配置没有损坏：
+
+- `ts_workspace\.opencode\skills` 是有效 Junction，目标为 `ai_custom\CODEX\.codex_skill_build`。
+- 23 个磁盘 Skill 的 `SKILL.md` 均可读并能解析 frontmatter；加上内置 Skill，V2 接口返回 24 个。
+- `ai_custom\OPENCODE\AGENTS.md`、`ai_custom\CODEX\AGENTS.md` 和根 `opencode.json` 均存在且可读。
+- 同一 sidecar 的 V2 `/api/agent`、`/api/skill`、`/api/provider` 正常返回 7、24、1 项；DeepSeek 凭据仍处于 connected 状态。
+- 出错的是被客户端选中的旧 V1 `/agent`、`/skill`、`/provider` 请求链，三个接口在该精确根目录均返回 499 空体。
+
+根因是官方新增的双服务器兼容检测与当前 V2 健康契约不一致：当前 sidecar 同时暴露 `/api/health` 与 `/global/health`，但原检测优先把 legacy 健康响应判成 V1；同时又要求真实 V2 契约中不存在的 `pid` 字段。于是客户端整体选择旧 API，目录 Skill、Agent 和 Provider store 都没有加载，旧布局只能显示免费模型列表。
+
+### Changelist（3 个文件）
+
+- `packages/app/src/utils/server-protocol.ts`
+  - 并行探测 V2 与 legacy 健康接口；双栈响应明确优先 V2，只有 legacy 可用时选择 V1。
+  - 保留历史含 `pid` 的 V2 识别。
+  - 对只有 `{ healthy: true }` 的单健康接口增加 V2 专属 `/api/location` shape 探测，避免破坏历史过渡 V1 服务器兼容。
+  - 两个健康接口都不可用时保持原有默认 V2 行为。
+- `packages/app/src/utils/server-protocol.test.ts`
+  - 覆盖当前双栈、纯 V2、历史含 `pid` 的 V2、传统 V1、过渡 V1、V2 健康网络失败和双端点缺失共 7 种协议矩阵。
+- `AI_HELP_MD/CODEX_OPENCODE_WINDOWS_CLIENT_CHANGELOG.md`
+  - 记录本次目录排查证据、协议取舍、文件级 changelist 和验证结果。
+
+公司工程目录只做了只读检查，本次没有修改 `E:\workspace\game\ts_workspace` 或 `E:\workspace\game\xls_config` 中的任何文件。
+
+### 验证结果
+
+- `packages/app`: 协议检测定向测试 `7 passed, 0 failed`。
+- `packages/desktop`: Node `24.11.1` 下 `bun run build` 完整通过，main、preload 和 renderer 均成功生成。
+- 仓库根目录：`git diff --check` 通过，仅有 Windows LF/CRLF 提示。
+- `packages/app`: `bun typecheck` 已使用 Node `24.11.1` 执行，但被仓库既有的 Windows symlink checkout 问题阻断：Git mode `120000` 的 `src/custom-elements.d.ts` 在当前工作树中是只含目标路径的一行普通文本。本次没有修改或提交该文件，桌面完整构建已通过。
+
 ## 2026-08-03 - 同步官方 dev 并迁移 Windows/Skill 能力到 V2
 
 ### 背景

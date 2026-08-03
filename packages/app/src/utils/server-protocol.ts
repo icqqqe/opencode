@@ -21,15 +21,38 @@ async function probe(server: ServerConnection.HttpBase, fetch: typeof globalThis
   return value
 }
 
+function isHealthy(value: unknown) {
+  return !!value && typeof value === "object" && "healthy" in value && value.healthy === true
+}
+
+function isV2Location(value: unknown) {
+  if (!value || typeof value !== "object") return false
+  if (!("directory" in value) || typeof value.directory !== "string") return false
+  if (!("project" in value) || !value.project || typeof value.project !== "object") return false
+  return (
+    "id" in value.project &&
+    typeof value.project.id === "string" &&
+    "directory" in value.project &&
+    typeof value.project.directory === "string"
+  )
+}
+
 export async function detectServerProtocol(
   server: ServerConnection.HttpBase,
   fetch: typeof globalThis.fetch,
 ): Promise<ServerProtocol> {
-  const legacy = await probe(server, fetch, "/global/health").catch(() => undefined)
-  if (legacy && "healthy" in legacy && legacy.healthy === true) return "v1"
+  const [current, legacy] = await Promise.all([
+    probe(server, fetch, "/api/health").catch(() => undefined),
+    probe(server, fetch, "/global/health").catch(() => undefined),
+  ])
 
-  const current = await probe(server, fetch, "/api/health").catch(() => undefined)
-  if (current && "pid" in current && typeof current.pid === "number") return "v2"
-  if (current && "healthy" in current && current.healthy === true) return "v1"
-  return "v2"
+  // Current sidecars are dual-stack, so a valid response from both generations
+  // must prefer V2. Historical transitional V1 servers exposed only /api/health.
+  if (isHealthy(current) && isHealthy(legacy)) return "v2"
+  if (isHealthy(legacy)) return "v1"
+  if (!isHealthy(current)) return "v2"
+  if ("pid" in current && typeof current.pid === "number") return "v2"
+
+  const location = await probe(server, fetch, "/api/location").catch(() => undefined)
+  return isV2Location(location) ? "v2" : "v1"
 }
